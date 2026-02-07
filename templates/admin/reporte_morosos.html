@@ -1,0 +1,101 @@
+<style>
+    @media print {
+        /* Oculta CUALQUIER etiqueta nav o clase que parezca menú */
+        nav, .navbar, .nav-container, header, .nav-links, button, .btn-save {
+            display: none !important;
+            opacity: 0 !important;
+        }
+        
+        /* Elimina el espacio que dejaba el menú arriba */
+        body, .admin-container {
+            margin: 0 !important;
+            padding: 0 !important;
+            display: block !important;
+        }
+
+        /* Asegura que la tabla ocupe toda la hoja */
+        .table-card {
+            box-shadow: none !important;
+            width: 100% !important;
+            max-width: 100% !important;
+        }
+    }
+</style>
+<div id="header-impresion" style="display: none; text-align: center; margin-bottom: 20px;">
+    <h1 style="margin: 0;">CONJUNTO RESIDENCIAL "LA ESPERANZA"</h1>
+    <h3 style="margin: 5px 0; color: #555;">Estado General de Cuentas y Morosidad</h3>
+    <p id="fecha-actual" style="font-weight: bold;"></p>
+    <hr style="border: 1px solid #000;">
+</div>
+
+<script>
+    // Esto pone la fecha automática al cargar la página
+    const opciones = { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' };
+    document.getElementById('fecha-actual').innerHTML = "Generado el: " + new Date().toLocaleDateString('es-ES', opciones);
+</script>
+
+<style>
+    @media print {
+        #header-impresion {
+            display: block !important; /* Se activa solo al imprimir */
+        }
+        .table-card {
+            border: none !important;
+            padding: 0 !important;
+        }
+        table {
+            font-size: 12px; /* Un poco más pequeña para que quepa todo */
+        }
+    }
+</style>
+{% extends "base.html" %}
+
+{% block content %}
+<div class="admin-container" style="max-width: 1000px;">
+    <div class="table-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h3><i class="material-icons">warning</i> Reporte de Saldos y Morosidad</h3>
+            <button onclick="window.print()" class="btn-save" style="width: auto; padding: 8px 20px; background: #6c757d;">
+                Imprimir Reporte
+            </button>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Casa</th>
+                    <th>Propietario</th>
+                    <th>Cuota Anual</th>
+                    <th>Total Pagado</th>
+                    <th>Saldo Pendiente</th>
+                    <th>Estado</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in reporte %}
+                <tr>
+                    <td><strong>#{{ item.numero }}</strong></td>
+                    <td>{{ item.propietario }}</td>
+                    <td>${{ "%.2f"|format(item.total_deuda) }}</td>
+                    <td class="text-success">${{ "%.2f"|format(item.pagado) }}</td>
+                    <td class="{% if item.saldo > 0 %}text-danger{% else %}text-success{% endif %}">
+                        ${{ "%.2f"|format(item.saldo) }}
+                    </td>
+                    <td>
+                        {% if item.saldo > 0 %}
+                            <span style="background: #f8d7da; color: #721c24; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;">
+                                DEUDA
+                            </span>
+                        {% else %}
+                            <span style="background: #d4edda; color: #155724; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;">
+                                AL DÍA
+                            </span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

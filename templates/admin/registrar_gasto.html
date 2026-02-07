@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="admin-container">
+    <div class="form-card">
+        <h3><i class="material-icons">payments</i> Registrar Gasto del Conjunto</h3>
+        <form method="POST">
+            <div class="input-group">
+                <label>Descripción del Gasto</label>
+                <input type="text" name="descripcion" placeholder="Ej: Reparación bomba de agua" required>
+            </div>
+            
+            <div class="input-group">
+                <label>Categoría</label>
+                <select name="categoria">
+                    <option value="Servicios">Servicios (Luz/Agua)</option>
+                    <option value="Mantenimiento">Mantenimiento</option>
+                    <option value="Limpieza">Limpieza</option>
+                    <option value="Seguridad">Seguridad</option>
+                    <option value="Otros">Otros</option>
+                </select>
+            </div>
+
+            <div class="input-group">
+                <label>Monto ($)</label>
+                <input type="number" step="0.01" name="monto" placeholder="0.00" required>
+            </div>
+
+            <button type="submit" class="btn-save" style="background-color: #e67e22;">Guardar Gasto</button>
+        </form>
+    </div>
+
+    <div class="table-card">
+        <div style="display: flex; justify-content: space-between;">
+            <h3>Historial de Gastos</h3>
+            <h3 class="text-danger">Total: ${{ "%.2f"|format(total_gastos) }}</h3>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Fecha</th>
+                    <th>Descripción</th>
+                    <th>Categoría</th>
+                    <th>Monto</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for gasto in gastos %}
+                <tr>
+                    <td>{{ gasto.fecha.strftime('%d/%m/%Y') }}</td>
+                    <td>{{ gasto.descripcion }}</td>
+                    <td><span class="badge-success" style="background: #eee; color: #333;">{{ gasto.categoria }}</span></td>
+                    <td class="text-danger">-${{ "%.2f"|format(gasto.monto) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

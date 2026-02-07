@@ -1,0 +1,11 @@
+# Entorno virtual
+venv/
+.env
+
+# Base de datos (No se sube para que no se sobreescriba en otros lados)
+instance/
+*.db
+
+# Cache de Python
+__pycache__/
+*.pyc

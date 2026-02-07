@@ -1,0 +1,134 @@
+/* static/css/style.css */
+body {
+    background-color: #f0f2f5;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+.admin-container {
+    padding: 40px 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 30px;
+}
+
+.form-card, .table-card {
+    background: white;
+    padding: 30px;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    width: 100%;
+    max-width: 600px;
+}
+
+.btn-save {
+    background: #28a745;
+    color: white;
+    padding: 12px;
+    width: 100%;
+    border: none;
+    border-radius: 6px;
+    font-weight: bold;
+    cursor: pointer;
+    font-size: 16px;
+    margin-top: 10px;
+}
+
+.btn-save:hover {
+    background: #218838;
+}
+
+input, select {
+    width: 100%;
+    padding: 10px;
+    margin: 10px 0 20px 0;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+}
+/* Color para deudas o saldos pendientes */
+.text-danger {
+    color: #d93025;
+    font-weight: bold;
+}
+
+/* Estilo para las filas de la tabla al pasar el mouse */
+tbody tr:hover {
+    background-color: #f8f9fa;
+    transition: 0.2s;
+}
+
+/* Ajuste para móviles */
+@media (max-width: 600px) {
+    .admin-container {
+        padding: 10px;
+    }
+    .form-card, .table-card {
+        padding: 15px;
+    }
+}
+
+/* Etiquetas de estado */
+.badge-danger {
+    background: #ffebee;
+    color: #c62828;
+    padding: 5px 10px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: bold;
+    border: 1px solid #ef9a9a;
+}
+
+.badge-success {
+    background: #e8f5e9;
+    color: #2e7d32;
+    padding: 5px 10px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: bold;
+    border: 1px solid #a5d6a7;
+}
+
+/* Para que la tabla sea más fácil de leer línea por línea */
+tr:nth-child(even) {
+    background-color: #fcfcfc;
+}
+/* Esto le dice al navegador: "Si vas a imprimir, haz esto" */
+@media print {
+    /* Ocultamos TODO lo que no sea el reporte */
+    nav, .navbar, .nav-container, .nav-links, .btn-save, button, .logo {
+        display: none !important;
+        visibility: hidden !important;
+        height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
+    /* Ajustamos el contenedor para que use toda la hoja */
+    .admin-container {
+        margin: 0 !important;
+        padding: 0 !important;
+        display: block !important;
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+
+    /* Quitamos sombras y fondos grises para ahorrar tinta */
+    body {
+        background: white !important;
+    }
+
+    .table-card {
+        box-shadow: none !important;
+        border: none !important;
+        width: 100% !important;
+    }
+
+    /* Forzamos a que los colores (rojo/verde) se impriman */
+    * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+}

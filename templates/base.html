@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Control de Pagos</title>
+   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', _external=True) }}?v={{ range(1, 1000) | random }}">
+
+</head>
+<body style="margin: 0; padding: 0; display: flex; flex-direction: column; min-height: 100vh; font-family: sans-serif;">
+
+    {% if current_user.is_authenticated %}
+  <nav class="navbar">
+    <div class="nav-links">
+        <a href="/">Inicio</a>
+        {% if current_user.rol == 'admin' %}
+            <a href="{{ url_for('crear_dueno') }}">Crear Dueño</a>
+            <a href="{{ url_for('registrar_pago') }}">Registrar Pago</a>
+            <a href="{{ url_for('reporte_morosos') }}">Reporte Morosos</a>
+            <a href="{{ url_for('registrar_gasto') }}">Registrar Gasto</a>
+
+        {% endif %}
+        <a href="{{ url_for('logout') }}">Salir</a>
+    </div>
+</nav>
+    {% endif %}
+
+    <div style="flex: 1; display: flex; justify-content: center; align-items: center; background: #f0f2f5; width: 100%;">
+        <div style="width: 100%; max-width: 400px; padding: 20px;">
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+
+</body>
+</html>

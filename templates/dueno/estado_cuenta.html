@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="admin-container">
+    
+    <div class="form-card" style="border-left: 5px solid #1a73e8; text-align: left;">
+        <h3 style="color: #555;">Resumen de Cuenta</h3>
+        <p style="font-size: 0.9rem; color: #888;">Casa #{{ casa.numero_casa }} - {{ current_user.username }}</p>
+        
+        <div style="margin-top: 20px;">
+            <h1 style="margin: 0; color: #d93025;">${{ "%.2f"|format(saldo_pendiente) }}</h1>
+            <p style="color: #666; font-weight: bold;">Saldo Pendiente Total</p>
+        </div>
+    </div>
+
+    <div class="table-card">
+        <h3>Historial de Pagos</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Fecha</th>
+                    <th>Concepto</th>
+                    <th>Monto</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for pago in pagos %}
+                <tr>
+                    <td>{{ pago.fecha.strftime('%d/%m/%Y') }}</td>
+                    <td>{{ pago.concepto }}</td>
+                    <td class="text-success" style="font-weight: bold;">
+                        + ${{ "%.2f"|format(pago.monto) }}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="3" style="text-align: center; color: #999; padding: 20px;">
+                        No se han registrado pagos todavía.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+</div>
+{% endblock %}
