@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="admin-container">
+    <h1 style="text-align: center;">Panel de Control</h1>
+
+    <div style="display: flex; gap: 20px; justify-content: center; margin-bottom: 30px;">
+        <div class="form-card" style="flex: 1; text-align: center; border-top: 5px solid green;">
+            <h3>Ingresos</h3>
+            <p style="font-size: 24px;">$ {{ ingresos }}</p>
+        </div>
+        <div class="form-card" style="flex: 1; text-align: center; border-top: 5px solid orange;">
+            <h3>Gastos</h3>
+            <p style="font-size: 24px;">$ {{ egresos }}</p>
+        </div>
+        <div class="form-card" style="flex: 1; text-align: center; border-top: 5px solid blue;">
+            <h3>Balance</h3>
+            <p style="font-size: 24px;">$ {{ balance }}</p>
+        </div>
+    </div>
+
+    <div class="table-card" style="max-width: 600px; margin: 0 auto; padding: 20px;">
+        <h3 style="text-align: center;">Gastos por Categoría</h3>
+        <canvas id="graficaGastos" style="max-height: 300px;"></canvas>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    // Pasamos los datos de Python a JS de forma segura
+    const datosLabels = {{ labels | tojson | safe }};
+    const datosValores = {{ valores | tojson | safe }};
+
+    if (datosLabels.length > 0) {
+        new Chart(document.getElementById('graficaGastos'), {
+            type: 'doughnut',
+            data: {
+                labels: datosLabels,
+                datasets: [{
+                    data: datosValores,
+                    backgroundColor: ['#e67e22', '#3498db', '#f1c40f', '#e74c3c', '#2ecc71']
+                }]
+            }
+        });
+    }
+</script>
+{% endblock %}

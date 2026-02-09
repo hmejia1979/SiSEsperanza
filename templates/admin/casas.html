@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="admin-container" style="padding: 40px 0;">
+    <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 30px; border-bottom: 2px solid #f1f5f9; padding-bottom: 20px;">
+        <div>
+            <h1 style="margin: 0; font-size: 1.8rem; color: #0f172a; font-weight: 800;">🏠 Inventario de Casas</h1>
+            <p style="margin: 5px 0 0; color: #64748b;">Control de propiedades, dueños y saldos pendientes.</p>
+        </div>
+        <form action="{{ url_for('generar_mensualidad') }}" method="POST" onsubmit="return confirm('¿Generar el cobro de $5.00 para todas las casas?')">
+            <button type="submit" style="background: #10b981; color: white; padding: 12px 24px; border-radius: 10px; border: none; font-weight: 600; font-size: 0.9rem; cursor: pointer; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);">
+                💵 Cobrar Mensualidad ($5)
+            </button>
+        </form>
+        <a href="{{ url_for('registrar_casa') }}" style="background: #1e293b; color: white; padding: 12px 24px; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 0.9rem; transition: 0.3s;">
+            + Agregar Propiedad
+        </a>
+    </div>
+
+    <div class="table-card">
+        <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr style="background: #f8fafc;">
+                    <th style="padding: 16px 24px; text-align: left; font-size: 0.75rem; color: #64748b; border-bottom: 1px solid #e2e8f0;">N° CASA</th>
+                    <th style="padding: 16px 24px; text-align: left; font-size: 0.75rem; color: #64748b; border-bottom: 1px solid #e2e8f0;">PROPIETARIO REGISTRADO</th>
+                    <th style="padding: 16px 24px; text-align: left; font-size: 0.75rem; color: #64748b; border-bottom: 1px solid #e2e8f0;">DEUDA 2025</th>
+                    <th style="padding: 16px 24px; text-align: center; font-size: 0.75rem; color: #64748b; border-bottom: 1px solid #e2e8f0;">HISTORIAL</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for casa in casas %}
+                <tr style="border-bottom: 1px solid #f1f5f9;" onmouseover="this.style.background='#fcfcfc'" onmouseout="this.style.background='white'">
+                    <td style="padding: 16px 24px;">
+                        <span style="background: #eff6ff; color: #3b82f6; padding: 6px 12px; border-radius: 8px; font-weight: 800; font-family: monospace;">
+                            {{ casa.numero_casa }}
+                        </span>
+                    </td>
+                    <td style="padding: 16px 24px;">
+                        <div style="font-weight: 600; color: #1e293b;">{{ casa.dueno_nombre or 'Sin asignar' }}</div>
+                    </td>
+                    <td style="padding: 16px 24px;">
+                        {% if casa.deuda_2025 > 0 %}
+                            <span style="color: #ef4444; font-weight: 700;">${{ "{:,.2f}".format(casa.deuda_2025) }}</span>
+                        {% else %}
+                            <span style="color: #10b981; font-weight: 600;">$0.00 (Al día)</span>
+                        {% endif %}
+                    </td>
+                    <td style="padding: 16px 24px; text-align: center;">
+                        <span style="color: #94a3b8; font-size: 0.85rem;">{{ casa.pagos | length }} pagos</span>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="4" style="padding: 60px; text-align: center; color: #94a3b8;">No hay propiedades registradas.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

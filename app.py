@@ -4,6 +4,7 @@ from flask_login import LoginManager, login_user, login_required, logout_user, c
 from models import db, Usuario, Casa, Pago, Gasto
 from dotenv import load_dotenv
 from sqlalchemy import func
+from datetime import datetime
 load_dotenv()
 
 app = Flask(__name__)
@@ -22,30 +23,51 @@ login_manager.login_view = 'login'
 
 @login_manager.user_loader
 def load_user(user_id):
-    return Usuario.query.get(int(user_id))
-
+    # Esto quita el error de LegacyAPIWarning
+    return db.session.get(Usuario, int(user_id))
 @app.route('/')
-def index():
-    # Si el usuario no está logueado, lo mandamos al login
-    return redirect(url_for('login'))
+@login_required
+def inicio():
+    if current_user.rol == 'admin':
+        # 1. Calculamos los datos (asegurándonos de definir las variables)
+        total_ingresos = db.session.query(db.func.sum(Pago.monto)).scalar() or 0
+        total_egresos = db.session.query(db.func.sum(Gasto.monto)).scalar() or 0
+        balance = float(total_ingresos) - float(total_egresos)
 
+        # 2. Consultar gastos para la gráfica
+        gastos_query = db.session.query(
+            Gasto.categoria, db.func.sum(Gasto.monto)
+        ).group_by(Gasto.categoria).all()
+
+        labels = [str(g[0]) for g in gastos_query]
+        valores = [float(g[1]) for g in gastos_query]
+
+        # 3. Enviamos TODAS las variables al HTML
+        return render_template('admin/inicio_admin.html', 
+                               ingresos=total_ingresos, 
+                               egresos=total_egresos, 
+                               balance=balance,
+                               labels=labels,
+                               valores=valores)
+    
+    return redirect(url_for('ver_estado_cuenta'))
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        username = request.form.get('username')
+        # Cambiamos 'email' por 'username'
+        username = request.form.get('username') 
         password = request.form.get('password')
         
-        user = Usuario.query.filter_by(username=username).first()
+        # Buscamos en la base de datos por el campo 'username'
+        usuario = Usuario.query.filter_by(username=username).first()
         
-        # Por ahora, sin encriptación para que pruebes rápido
-        if user and user.password == password:
-            login_user(user)
-            if user.rol == 'admin':
-                return redirect(url_for('registrar_pago'))
-            else:
-                return redirect(url_for('ver_estado_cuenta')) # Esta la crearemos luego
-        
-        flash('Usuario o contraseña incorrectos')
+        if usuario and usuario.password == password: # Nota: Luego deberías usar hash para seguridad
+            login_user(usuario)
+            return redirect(url_for('inicio'))
+        else:
+            # Aquí podrías usar flash() para avisar que los datos son incorrectos
+            return "Usuario o contraseña incorrectos"
+            
     return render_template('login.html')
 
 @app.route('/logout')
@@ -57,7 +79,7 @@ def logout():
 # RUTA DE REGISTRO DE PAGOS (SOLO ADMIN)
 @app.route('/admin/registrar-pago', methods=['GET', 'POST'])
 @login_required
-def registrar_pago(): # <--- Este nombre debe ser único en todo el archivo
+def registrar_pago():
     if current_user.rol != 'admin':
         return redirect(url_for('ver_estado_cuenta'))
 
@@ -67,14 +89,24 @@ def registrar_pago(): # <--- Este nombre debe ser único en todo el archivo
         c_concepto = request.form.get('concepto')
 
         try:
+            monto_float = float(m_valor)
+            casa_id_int = int(c_id)
+            
+            # 1. Creamos el registro del pago
             nuevo_pago = Pago(
-                monto=float(m_valor), 
+                monto=monto_float, 
                 concepto=c_concepto, 
-                casa_id=int(c_id)
+                casa_id=casa_id_int
             )
+            
+            # 2. BUSCAMOS LA CASA Y RESTAMOS LA DEUDA
+            casa = Casa.query.get(casa_id_int)
+            if casa:
+                casa.deuda_2025 -= monto_float # <--- ¡Aquí ocurre la magia!
+            
             db.session.add(nuevo_pago)
             db.session.commit()
-            flash("¡Pago registrado exitosamente!")
+            flash("¡Pago registrado y deuda actualizada!")
         except Exception as e:
             db.session.rollback()
             flash(f"Error al registrar: {str(e)}")
@@ -82,12 +114,44 @@ def registrar_pago(): # <--- Este nombre debe ser único en todo el archivo
         return redirect(url_for('registrar_pago'))
 
     casas = Casa.query.all()
-    # Esta línea es la que agregamos para la nueva tabla
     pagos_recientes = Pago.query.order_by(Pago.id.desc()).limit(10).all()
     
-    return render_template('admin/registrar_pago.html', 
+    # Ajusté la ruta del template (quité 'admin/') si tus archivos están en templates directamente
+    return render_template('/admin/registrar_pago.html', 
                            casas=casas, 
                            pagos_recientes=pagos_recientes)
+
+@app.route('/admin/generar-mensualidad', methods=['POST'])
+@login_required
+def generar_mensualidad():
+    if current_user.rol != 'admin':
+        return redirect(url_for('inicio'))
+
+    # Valor fijo de la cuota mensual
+    CUOTA_FIJA = 5.00
+    
+    # Obtenemos el nombre del mes actual para el mensaje de confirmación
+    meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", 
+             "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+    mes_actual = meses[datetime.now().month - 1]
+
+    try:
+        casas = Casa.query.all()
+        if not casas:
+            flash("No hay casas registradas.")
+            return redirect(url_for('lista_casas'))
+
+        for casa in casas:
+            # Sumamos los 5 dólares a la deuda actual
+            casa.deuda_2025 += CUOTA_FIJA
+        
+        db.session.commit()
+        flash(f"✅ Se han cargado ${CUOTA_FIJA:.2f} a todas las casas (Mes: {mes_actual})")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error al generar mensualidad: {str(e)}")
+
+    return redirect(url_for('lista_casas'))
 
 @app.route('/admin/crear-dueno', methods=['GET', 'POST'])
 @login_required
@@ -126,6 +190,46 @@ def crear_dueno():
 
     return render_template('admin/crear_dueno.html')
 
+@app.route('/admin/casas')
+@login_required
+def lista_casas():
+    if current_user.rol != 'admin':
+        return redirect(url_for('inicio'))
+    # Cambiamos Casa.numero por Casa.numero_casa
+    todas_las_casas = Casa.query.order_by(Casa.numero_casa).all()
+    return render_template('/admin/casas.html', casas=todas_las_casas)
+
+@app.route('/admin/registrar-casa', methods=['GET', 'POST'])
+@login_required
+def registrar_casa():
+    if current_user.rol != 'admin':
+        return redirect(url_for('inicio'))
+    
+    if request.method == 'POST':
+        numero = request.form.get('numero')
+        bloque = request.form.get('bloque')
+        
+        nueva_casa = Casa(numero=numero, bloque=bloque)
+        try:
+            db.session.add(nueva_casa)
+            db.session.commit()
+            return redirect(url_for('lista_casas'))
+        except:
+            db.session.rollback()
+            return "Error: Ese número de casa ya existe."
+            
+    return render_template('registrar_casa.html')
+
+@app.route('/admin/propietarios')
+@login_required
+def lista_propietarios():
+    if current_user.rol != 'admin':
+        return redirect(url_for('ver_estado_cuenta'))
+    
+    # Obtenemos todos los usuarios que son dueños
+    propietarios = Usuario.query.filter_by(rol='propietario').all()
+    return render_template('propietarios.html', propietarios=propietarios) 
+
 @app.route('/admin/reporte-morosos')
 @login_required
 def reporte_morosos():
@@ -151,6 +255,41 @@ def reporte_morosos():
         })
 
     return render_template('admin/reporte_morosos.html', reporte=reporte)
+
+@app.route('/admin/registrar-usuario', methods=['GET', 'POST'])
+@login_required
+def registrar_usuario():
+    if current_user.rol != 'admin':
+        return redirect(url_for('inicio'))
+    
+    # Obtenemos todas las casas para mostrarlas en el formulario
+    casas_disponibles = Casa.query.all()
+    
+    if request.method == 'POST':
+        username = request.form.get('nombre')
+        password = request.form.get('password')
+        casa_id = request.form.get('casa_id') # Tomamos el valor del 'select'
+        
+        nuevo_usuario = Usuario(
+            username=username,
+            password=password,
+            rol='propietario',
+            casa_id=casa_id
+        )
+        
+        try:
+            db.session.add(nuevo_usuario)
+            db.session.commit()
+            return redirect(url_for('lista_propietarios'))
+        except Exception as e:
+            db.session.rollback()
+            return f"Error al guardar: {e}"
+        
+    # Pasamos las casas al template
+    return render_template('/admin/registrar_usuario.html', casas=casas_disponibles)
+
+
+
 @app.route('/admin/registrar-gasto', methods=['GET', 'POST'])
 @login_required
 def registrar_gasto():
@@ -174,8 +313,46 @@ def registrar_gasto():
 
     gastos = Gasto.query.order_by(Gasto.fecha.desc()).all()
     total_gastos = sum(g.monto for g in gastos)
-    
     return render_template('admin/registrar_gasto.html', gastos=gastos, total_gastos=total_gastos)
+
+@app.route('/admin/editar-propietario/<int:id>', methods=['GET', 'POST'])
+@login_required
+def editar_propietario(id):
+    if current_user.rol != 'admin':
+        return redirect(url_for('inicio'))
+    
+    usuario = Usuario.query.get_or_404(id)
+    casas_disponibles = Casa.query.all()
+    
+    if request.method == 'POST':
+        usuario.username = request.form.get('nombre')
+        usuario.casa_id = request.form.get('casa_id')
+        if request.form.get('password'):
+            usuario.password = request.form.get('password')
+            
+        db.session.commit()
+        return redirect(url_for('lista_propietarios'))
+    
+    return render_template('/admin/editar_propietario.html', usuario=usuario, casas=casas_disponibles)
+
+
+
+@app.route('/admin/eliminar-propietario/<int:id>')
+@login_required
+def eliminar_propietario(id):
+    if current_user.rol != 'admin':
+        return redirect(url_for('inicio'))
+    
+    usuario = Usuario.query.get_or_404(id)
+    try:
+        db.session.delete(usuario)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return f"No se puede eliminar: el usuario tiene registros asociados. {e}"
+        
+    return redirect(url_for('lista_propietarios'))
+
 
 @app.route('/mi-estado')
 @login_required

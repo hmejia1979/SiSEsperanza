@@ -1,27 +1,31 @@
 /* static/css/style.css */
 body {
+    display: block; /* Cambiado de flex para evitar desplazamientos laterales */
     background-color: #f0f2f5;
     margin: 0;
-    display: flex;
-    flex-direction: column;
-    min-height: 100vh;
 }
 
 .admin-container {
     padding: 40px 20px;
     display: flex;
     flex-direction: column;
-    align-items: center;
+    /* align-items: stretch;  <-- Asegúrate de que esto esté así */
     gap: 30px;
+    
+    /* ESTO ES LO QUE CENTRA EL BLOQUE COMPLETO */
+    max-width: 1200px; 
+    margin: 0 auto !important; 
+    width: 95%;
 }
-
-.form-card, .table-card {
+/* El formulario se queda en 600px para que no se vea gigante */
+.form-card {
     background: white;
     padding: 30px;
     border-radius: 12px;
     box-shadow: 0 4px 20px rgba(0,0,0,0.08);
     width: 100%;
     max-width: 600px;
+    margin: 0 auto; /* Lo centramos solito */
 }
 
 .btn-save {
@@ -107,24 +111,42 @@ tr:nth-child(even) {
     }
 
     /* Ajustamos el contenedor para que use toda la hoja */
-    .admin-container {
-        margin: 0 !important;
-        padding: 0 !important;
-        display: block !important;
-        width: 100% !important;
-        max-width: 100% !important;
-    }
+  .admin-container {
+    /* Si tu sidebar mide, por ejemplo, 250px, ajustamos el inicio */
+    margin-left: auto !important;
+    margin-right: auto !important;
+    
+    /* Esto centra el contenido en el espacio disponible */
+    width: 95%;
+    max-width: 1100px;
+    
+    padding: 30px;
+    display: flex;
+    flex-direction: column;
+    gap: 25px;
+    
+    /* Si sientes que sigue muy a la derecha, reduce este valor */
+    box-sizing: border-box;
+}
 
     /* Quitamos sombras y fondos grises para ahorrar tinta */
     body {
-        background: white !important;
-    }
-
-    .table-card {
-        box-shadow: none !important;
-        border: none !important;
-        width: 100% !important;
-    }
+    background-color: #f0f2f5;
+    margin: 0;
+    padding: 0;
+    display: block; /* Cambiamos flex por block para evitar alineaciones laterales raras */
+    min-height: 100vh;
+}
+.table-card {
+    background: white;
+    padding: 30px;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    width: 100%;           /* Ocupa el 100% de su padre (admin-container) */
+    max-width: 100% !important; 
+    box-sizing: border-box;
+    overflow-x: auto;      /* Scroll horizontal solo si es necesario */
+}
 
     /* Forzamos a que los colores (rojo/verde) se impriman */
     * {

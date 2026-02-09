@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="admin-container" style="padding: 40px 0; font-family: 'Inter', sans-serif;">
+    <div style="margin-bottom: 30px;">
+        <h1 style="color: #1e293b; font-weight: 800; margin: 0; font-size: 2rem;">Panel de Control</h1>
+        <p style="color: #64748b; margin-top: 5px;">Resumen financiero de Urbanización La Esperanza</p>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 25px; margin-bottom: 40px;">
+        
+        <div style="background: linear-gradient(135deg, #10b981, #059669); padding: 25px; border-radius: 20px; color: white; box-shadow: 0 10px 20px rgba(16, 185, 129, 0.2);">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-weight: 600; opacity: 0.9;">Saldo en Caja</span>
+                <span style="font-size: 1.5rem;">🏦</span>
+            </div>
+            <h2 style="font-size: 2.2rem; margin: 15px 0 5px;">${{ "{:,.2f}".format(saldo) }}</h2>
+            <p style="margin: 0; font-size: 0.85rem; opacity: 0.8;">Ingresos menos Gastos</p>
+        </div>
+
+        <div style="background: white; padding: 25px; border-radius: 20px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px rgba(0,0,0,0.02);">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-weight: 600; color: #64748b;">Por Cobrar</span>
+                <span style="font-size: 1.5rem;">📉</span>
+            </div>
+            <h2 style="font-size: 2.2rem; margin: 15px 0 5px; color: #ef4444;">${{ "{:,.2f}".format(deuda) }}</h2>
+            <p style="margin: 0; font-size: 0.85rem; color: #94a3b8;">Total pendiente de vecinos</p>
+        </div>
+
+        <div style="background: white; padding: 25px; border-radius: 20px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px rgba(0,0,0,0.02);">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-weight: 600; color: #64748b;">Gastos Totales</span>
+                <span style="font-size: 1.5rem;">💸</span>
+            </div>
+            <h2 style="font-size: 2.2rem; margin: 15px 0 5px; color: #f59e0b;">${{ "{:,.2f}".format(gastos) }}</h2>
+            <p style="margin: 0; font-size: 0.85rem; color: #94a3b8;">Egresos registrados</p>
+        </div>
+    </div>
+
+    <div style="background: #f8fafc; padding: 30px; border-radius: 20px; border: 1px dashed #cbd5e0;">
+        <h3 style="margin-top: 0; color: #1e293b; margin-bottom: 20px;">Acciones Frecuentes</h3>
+        <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+            <a href="{{ url_for('registrar_pago') }}" style="background: #1e293b; color: white; padding: 12px 25px; border-radius: 10px; text-decoration: none; font-weight: 600; transition: 0.3s;">Registrar Pago</a>
+            <a href="{{ url_for('registrar_gasto') }}" style="background: white; color: #1e293b; padding: 12px 25px; border-radius: 10px; text-decoration: none; font-weight: 600; border: 1px solid #e2e8f0;">Añadir Gasto</a>
+            <a href="{{ url_for('lista_casas') }}" style="background: white; color: #1e293b; padding: 12px 25px; border-radius: 10px; text-decoration: none; font-weight: 600; border: 1px solid #e2e8f0;">Ver Propiedades</a>
+        </div>
+    </div>
+</div>
+{% endblock %}
