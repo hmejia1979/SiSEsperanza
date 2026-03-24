@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="max-width: 1000px; margin: 40px auto; padding: 0 20px; font-family: 'Segoe UI', Roboto, sans-serif;">
+    
+    <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 30px;">
+        <div>
+            <h1 style="color: #1e293b; margin: 0; font-size: 2rem; font-weight: 800;">Hola, {{ current_user.nombre }}</h1>
+            <p style="color: #64748b; margin: 5px 0 0 0;">Revisa el resumen de tu propiedad y pagos realizados.</p>
+        </div>
+        <div style="text-align: right; background: #f8fafc; padding: 10px 20px; border-radius: 12px; border: 1px solid #e2e8f0;">
+            <span style="display: block; color: #94a3b8; font-size: 0.75rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em;">Identificación</span>
+            <span style="color: #1e293b; font-weight: 700; font-size: 1.1rem;">Casa #{{ casa.numero_casa }}</span>
+        </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-bottom: 40px;">
+        
+        <div style="background: {{ '#f0fdf4' if casa.deuda_2025 <= 0 else '#fff1f2' }}; padding: 30px; border-radius: 24px; border: 1px solid {{ '#bbf7d0' if casa.deuda_2025 <= 0 else '#fecdd3' }}; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);">
+            <span style="color: {{ '#166534' if casa.deuda_2025 <= 0 else '#9f1239' }}; font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.025em;">
+                {{ 'Saldo a Favor' if casa.deuda_2025 < 0 else ('Pendiente de Pago' if casa.deuda_2025 > 0 else 'Estado de Cuenta') }}
+            </span>
+            <h2 style="font-size: 3rem; margin: 10px 0; color: {{ '#15803d' if casa.deuda_2025 <= 0 else '#be123c' }}; font-weight: 800;">
+                {% if casa.deuda_2025 == 0 %}
+                    AL DÍA
+                {% else %}
+                    ${{ "{:,.2f}".format(casa.deuda_2025 | abs) }}
+                {% endif %}
+            </h2>
+            <p style="color: {{ '#16a34a' if casa.deuda_2025 <= 0 else '#e11d48' }}; font-size: 0.95rem; font-weight: 500;">
+                {{ '¡Excelente! No tienes deudas.' if casa.deuda_2025 <= 0 else 'Recuerda realizar tu pago a tiempo.' }}
+            </p>
+        </div>
+
+        <div style="background: white; padding: 30px; border-radius: 24px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+            <span style="color: #64748b; font-weight: 700; font-size: 0.85rem; text-transform: uppercase;">Propietario Registrado</span>
+            <h3 style="font-size: 1.5rem; color: #1e293b; margin: 15px 0 5px 0; font-weight: 700;">{{ casa.dueno_nombre }}</h3>
+            <div style="display: flex; align-items: center; margin-top: 20px;">
+                <div style="width: 40px; height: 40px; background: #eff6ff; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #3b82f6; font-weight: bold;">i</div>
+                <p style="margin-left: 12px; color: #64748b; font-size: 0.85rem; line-height: 1.4;">Cualquier error en tus datos, contacta a la administración.</p>
+            </div>
+        </div>
+    </div>
+
+    <div style="background: white; border-radius: 24px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+        <div style="padding: 20px 30px; border-bottom: 1px solid #f1f5f9; background: #fcfdfe;">
+            <h3 style="margin: 0; color: #1e293b; font-size: 1.1rem; font-weight: 700;">Historial de Pagos</h3>
+        </div>
+        <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse;">
+                <thead>
+                    <tr style="text-align: left; background: #f8fafc;">
+                        <th style="padding: 15px 30px; color: #64748b; font-size: 0.85rem; font-weight: 700; text-transform: uppercase;">Concepto / Motivo</th>
+                        <th style="padding: 15px 30px; color: #64748b; font-size: 0.85rem; font-weight: 700; text-transform: uppercase; text-align: right;">Monto Recibido</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for pago in pagos %}
+                    <tr style="border-bottom: 1px solid #f1f5f9; transition: background 0.2s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='white'">
+                        <td style="padding: 20px 30px;">
+                            <div style="font-weight: 600; color: #334155;">{{ pago.concepto }}</div>
+                            <div style="font-size: 0.8rem; color: #94a3b8;">Recibo confirmado</div>
+                        </td>
+                        <td style="padding: 20px 30px; text-align: right;">
+                            <span style="background: #dcfce7; color: #15803d; padding: 6px 12px; border-radius: 12px; font-weight: 700; font-size: 0.95rem;">
+                                + ${{ "{:,.2f}".format(pago.monto) }}
+                            </span>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="2" style="padding: 60px 30px; text-align: center;">
+                            <img src="https://cdn-icons-png.flaticon.com/512/4076/4076432.png" style="width: 80px; opacity: 0.2; margin-bottom: 15px;">
+                            <p style="color: #94a3b8; font-size: 1rem;">Aún no tienes pagos registrados en el sistema.</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

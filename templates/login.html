@@ -1,12 +1,56 @@
 {% extends "base.html" %}
-
 {% block content %}
-<div style="background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); text-align: center;">
-    <h2>Iniciar Sesión</h2>
-    <form method="POST">
-        <input type="text" name="username" placeholder="Usuario" required style="width: 100%; padding: 10px; margin-bottom: 10px; border-radius: 5px; border: 1px solid #ddd;">
-        <input type="password" name="password" placeholder="Contraseña" required style="width: 100%; padding: 10px; margin-bottom: 15px; border-radius: 5px; border: 1px solid #ddd;">
-        <button type="submit" style="width: 100%; padding: 10px; background: #1a73e8; color: white; border: none; border-radius: 5px; cursor: pointer;">Entrar</button>
-    </form>
+<div style="display: flex; justify-content: center; align-items: center; min-height: 70vh; padding: 20px;">
+    
+    <div style="background: white; width: 100%; max-width: 400px; padding: 40px; border-radius: 24px; box-shadow: 0 15px 35px rgba(30, 41, 59, 0.1); border: 1px solid #e2e8f0;">
+        
+        <div style="text-align: center; margin-bottom: 35px;">
+            <div style="font-size: 3rem; margin-bottom: 10px;">🏘️</div>
+            <h2 style="color: #1e293b; font-weight: 800; margin: 0; font-size: 1.6rem;">SiSEsperanza</h2>
+            <p style="color: #64748b; font-size: 0.9rem; margin-top: 8px;">Ingrese sus credenciales para continuar</p>
+        </div>
+
+        <form method="POST">
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; margin-bottom: 8px; color: #475569; font-weight: 600; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px;">Nombre de Usuario</label>
+                <div style="position: relative;">
+                    <span style="position: absolute; left: 15px; top: 50%; transform: translateY(-50%); opacity: 0.5;">👤</span>
+                    <input type="text" name="username" required placeholder="Ej: admin_esperanza" 
+                           style="width: 100%; padding: 14px 14px 14px 45px; border: 2px solid #f1f5f9; border-radius: 12px; font-size: 1rem; outline: none; transition: 0.3s; box-sizing: border-box;">
+                </div>
+            </div>
+
+            <div style="margin-bottom: 30px;">
+                <label style="display: block; margin-bottom: 8px; color: #475569; font-weight: 600; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px;">Contraseña</label>
+                <div style="position: relative;">
+                    <span style="position: absolute; left: 15px; top: 50%; transform: translateY(-50%); opacity: 0.5;">🔒</span>
+                    <input type="password" name="password" required placeholder="••••••••" 
+                           style="width: 100%; padding: 14px 14px 14px 45px; border: 2px solid #f1f5f9; border-radius: 12px; font-size: 1rem; outline: none; transition: 0.3s; box-sizing: border-box;">
+                </div>
+            </div>
+
+            <button type="submit" style="width: 100%; background: #1e293b; color: white; padding: 15px; border: none; border-radius: 12px; font-weight: 700; font-size: 1rem; cursor: pointer; transition: 0.3s; box-shadow: 0 4px 6px rgba(30, 41, 59, 0.2);">
+                Iniciar Sesión
+            </button>
+        </form>
+
+        <div style="text-align: center; margin-top: 25px;">
+            <p style="color: #94a3b8; font-size: 0.8rem;">
+                Si olvidó sus datos, contacte a la administración del conjunto.
+            </p>
+        </div>
+    </div>
 </div>
+
+<style>
+    /* Efecto de foco en los inputs */
+    input:focus {
+        border-color: #3b82f6 !important;
+        background-color: #f8fafc;
+    }
+    button:hover {
+        background: #334155 !important;
+        transform: translateY(-1px);
+    }
+</style>
 {% endblock %}

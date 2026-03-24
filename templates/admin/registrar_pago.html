@@ -1,63 +1,75 @@
-<style>
-    /* Estilo de emergencia para probar */
-    .admin-container { background-color: #f0f2f5; padding: 50px; display: flex; flex-direction: column; align-items: center; }
-    .form-card { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); width: 400px; border-top: 5px solid #28a745; }
-    .btn-save { background: #28a745; color: white; padding: 10px; width: 100%; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
-    .btn-save:hover { background: #218838; }
-</style>
 {% extends "base.html" %}
-
 {% block content %}
-<div class="admin-container" style="padding: 40px 0;">
-    <div style="display: flex; gap: 30px; align-items: flex-start;">
-        
-        <div class="form-card" style="flex: 1; max-width: 380px; border-top: 5px solid #10b981;">
-            <h2 style="color: #1e293b; margin: 0 0 20px;">💰 Nuevo Pago</h2>
-            <form method="POST">
-                <label>Seleccionar Casa</label>
-                <select name="casa_id" required style="width: 100%; padding: 12px; margin-bottom: 15px; border-radius: 8px; border: 1px solid #cbd5e0;">
-                    <option value="" disabled selected>Elegir propiedad...</option>
+<div style="max-width: 600px; margin: 50px auto; padding: 0 20px;">
+    
+    <div style="background: white; padding: 40px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;">
+        <div style="margin-bottom: 25px; background: #f1f5f9; padding: 20px; border-radius: 12px; border: 1px dashed #cbd5e1;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <h3 style="margin: 0; color: #1e293b;">Generación Mensual</h3>
+                    <p style="margin: 5px 0 0 0; color: #64748b; font-size: 0.9rem;">
+                        Presiona este botón solo <strong>una vez al mes</strong> para cargar la cuota de $5.00 a todos.
+                    </p>
+                </div>
+                
+                <form action="{{ url_for('generar_alicuotas') }}" method="POST" onsubmit="return confirm('¿Confirmas generar la alícuota de este mes?');">
+                    <button type="submit" style="background: #1e293b; color: white; padding: 15px 30px; border-radius: 10px; font-weight: bold; border: none; cursor: pointer; display: flex; align-items: center; gap: 10px;">
+                        <span>💰 Cargar Alícuotas del Mes Actual</span>
+                    </button>
+                </form>
+            </div>
+        </div>
+        <div style="text-align: center; margin-bottom: 30px;">
+            <div style="background: #ecfdf5; color: #10b981; width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 15px; font-size: 1.5rem;">
+                💵
+            </div>
+            <h2 style="color: #1e293b; margin: 0; font-size: 1.5rem; font-weight: 800;">Registrar Nuevo Pago</h2>
+            <p style="color: #64748b; font-size: 0.9rem; margin-top: 5px;">Complete la información del recibo</p>
+        </div>
+
+        <form method="POST" action="{{ url_for('registrar_pago') }}">
+            
+            <div style="margin-bottom: 25px;">
+                <label style="display: block; margin-bottom: 8px; color: #475569; font-weight: 600; font-size: 0.9rem;">Seleccionar Propiedad:</label>
+                <select name="casa_id" required style="width: 100%; padding: 12px 15px; border: 2px solid #f1f5f9; border-radius: 12px; background: #f8fafc; color: #1e293b; font-size: 1rem; outline: none; transition: border-color 0.3s;">
+                    <option value="" disabled selected>Elija una casa...</option>
                     {% for casa in casas %}
-                    <option value="{{ casa.id }}">Casa {{ casa.numero_casa }} (Debe: ${{ "{:,.2f}".format(casa.deuda_2025) }})</option>
+                        <option value="{{ casa.id }}">
+                            Casa {{ casa.numero_casa }} - {{ casa.dueno_nombre }} (Deuda: ${{ "{:,.2f}".format(casa.deuda_2025) }})
+                        </option>
                     {% endfor %}
                 </select>
+            </div>
 
-                <label>Monto a Recibir ($)</label>
-                <input type="number" step="0.01" name="monto" placeholder="0.00" required
-                       style="width: 100%; padding: 12px; margin-bottom: 15px; border-radius: 8px; border: 1px solid #cbd5e0;">
+            <div style="margin-bottom: 25px;">
+                <label style="display: block; margin-bottom: 8px; color: #475569; font-weight: 600; font-size: 0.9rem;">Monto a Recibir ($):</label>
+                <div style="position: relative;">
+                    <span style="position: absolute; left: 15px; top: 50%; transform: translateY(-50%); color: #94a3b8; font-weight: bold;">$</span>
+                    <input type="number" step="0.01" name="monto" required placeholder="0.00" 
+                           style="width: 100%; padding: 12px 12px 12px 35px; border: 2px solid #f1f5f9; border-radius: 12px; font-size: 1.2rem; font-weight: 700; color: #10b981; outline: none;">
+                </div>
+            </div>
 
-                <label>Concepto / Referencia</label>
-                <input type="text" name="concepto" placeholder="Ej: Pago Enero - Efectivo" required
-                       style="width: 100%; padding: 12px; margin-bottom: 20px; border-radius: 8px; border: 1px solid #cbd5e0;">
+            <div style="margin-bottom: 30px;">
+                <label style="display: block; margin-bottom: 8px; color: #475569; font-weight: 600; font-size: 0.9rem;">Concepto del Pago:</label>
+                <textarea name="concepto" rows="3" required placeholder="Ej: Pago alícuota Enero 2025..." 
+                          style="width: 100%; padding: 12px 15px; border: 2px solid #f1f5f9; border-radius: 12px; background: #f8fafc; font-family: inherit; font-size: 1rem; outline: none; resize: none;"></textarea>
+            </div>
 
-                <button type="submit" style="background: #10b981; color: white; width: 100%; padding: 14px; border: none; border-radius: 10px; font-weight: 700; cursor: pointer; transition: 0.3s;">
-                    Registrar Cobro
+            <div style="display: flex; gap: 15px;">
+                <button type="submit" style="flex: 2; background: #10b981; color: white; padding: 15px; border: none; border-radius: 12px; font-weight: 700; font-size: 1rem; cursor: pointer; transition: transform 0.2s, background 0.3s;">
+                    Confirmar Pago
                 </button>
-            </form>
-        </div>
+                <a href="{{ url_for('lista_casas') }}" style="flex: 1; text-align: center; background: #f1f5f9; color: #64748b; padding: 15px; border-radius: 12px; text-decoration: none; font-weight: 600; font-size: 1rem; display: flex; align-items: center; justify-content: center;">
+                    Cancelar
+                </a>
+            </div>
 
-        <div class="table-card" style="flex: 2;">
-            <h2 style="margin: 0 0 20px; color: #1e293b;">Últimos 10 Ingresos</h2>
-            <table style="width: 100%; border-collapse: collapse;">
-                <thead>
-                    <tr style="background: #f8fafc; text-align: left;">
-                        <th style="padding: 12px; border-bottom: 1px solid #e2e8f0; color: #64748b; font-size: 0.8rem;">CASA</th>
-                        <th style="padding: 12px; border-bottom: 1px solid #e2e8f0; color: #64748b; font-size: 0.8rem;">CONCEPTO</th>
-                        <th style="padding: 12px; border-bottom: 1px solid #e2e8f0; color: #64748b; font-size: 0.8rem; text-align: right;">VALOR</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for pago in pagos_recientes %}
-                    <tr style="border-bottom: 1px solid #f1f5f9;">
-                        <td style="padding: 12px; font-weight: 700; color: #3b82f6;">{{ pago.casa.numero_casa }}</td>
-                        <td style="padding: 12px; color: #475569;">{{ pago.concepto }}</td>
-                        <td style="padding: 12px; text-align: right; font-weight: 800; color: #10b981;">+ ${{ "{:,.2f}".format(pago.monto) }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-
+        </form>
     </div>
+
+    <p style="text-align: center; color: #94a3b8; font-size: 0.8rem; margin-top: 20px;">
+        Nota: Al confirmar, el monto se restará automáticamente de la deuda de la casa.
+    </p>
 </div>
 {% endblock %}

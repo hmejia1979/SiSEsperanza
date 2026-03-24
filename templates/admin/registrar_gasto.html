@@ -1,59 +1,64 @@
 {% extends "base.html" %}
-
 {% block content %}
-<div class="admin-container">
-    <div style="display: flex; gap: 30px; align-items: flex-start;">
+<div style="max-width: 600px; margin: 50px auto; padding: 0 20px;">
+    
+    <div style="background: white; padding: 40px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;">
         
-        <div class="form-card" style="flex: 1; max-width: 400px;">
-            <h2 style="color: #1e293b; margin-top: 0;">💸 Nuevo Gasto</h2>
-            <form method="POST">
-                <label>Descripción</label>
-                <input type="text" name="descripcion" required placeholder="Ej: Pago Jardinero">
-                
-                <label>Monto ($)</label>
-                <input type="number" step="0.01" name="monto" required placeholder="0.00">
-                
-                <label>Categoría</label>
-                <select name="categoria">
-                    <option value="Mantenimiento">Mantenimiento</option>
-                    <option value="Servicios">Servicios</option>
-                    <option value="Seguridad">Seguridad</option>
-                </select>
-                
-                <button type="submit" class="btn-save">Registrar Gasto</button>
-            </form>
+        <div style="text-align: center; margin-bottom: 30px;">
+            <div style="background: #fff7ed; color: #ea580c; width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 15px; font-size: 1.5rem;">
+                💸
+            </div>
+            <h2 style="color: #1e293b; margin: 0; font-size: 1.5rem; font-weight: 800;">Registrar Nuevo Gasto</h2>
+            <p style="color: #64748b; font-size: 0.9rem; margin-top: 5px;">Detalle los egresos de la administración</p>
         </div>
+        <div style="margin-bottom: 20px; text-align: right;">
+            <a href="{{ url_for('descargar_pdf_gastos') }}" 
+                style="background: #ef4444; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: bold;">
+                📄 Descargar Informe PDF
+            </a>
+        </div>
+        <form method="POST" action="{{ url_for('registrar_gasto') }}">
+            
+            <div style="margin-bottom: 25px;">
+                <label style="display: block; margin-bottom: 8px; color: #475569; font-weight: 600; font-size: 0.9rem;">Categoría del Gasto:</label>
+                <select name="categoria" required style="width: 100%; padding: 12px 15px; border: 2px solid #f1f5f9; border-radius: 12px; background: #f8fafc; color: #1e293b; font-size: 1rem; outline: none;">
+                    <option value="" disabled selected>Seleccione una categoría...</option>
+                    <option value="Mantenimiento">🛠️ Mantenimiento</option>
+                    <option value="Servicios Básicos">🚰 Servicios Básicos (Luz/Agua)</option>
+                    <option value="Seguridad">🛡️ Seguridad</option>
+                    <option value="Limpieza">🧹 Limpieza</option>
+                    <option value="Otros">📦 Otros</option>
+                </select>
+            </div>
 
-        <div class="table-card" style="flex: 2;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h2 style="margin: 0; color: #1e293b;">Historial de Gastos</h2>
-                <div style="background: #f0fdf4; padding: 10px 20px; border-radius: 10px; border: 1px solid #bbf7d0;">
-                    <span style="color: #166534; font-size: 0.8rem; font-weight: bold; text-transform: uppercase;">Total Acumulado:</span>
-                    <div style="color: #15803d; font-size: 1.4rem; font-weight: 800;">${{ "{:,.2f}".format(total_gastos) }}</div>
+            <div style="margin-bottom: 25px;">
+                <label style="display: block; margin-bottom: 8px; color: #475569; font-weight: 600; font-size: 0.9rem;">Monto Pagado ($):</label>
+                <div style="position: relative;">
+                    <span style="position: absolute; left: 15px; top: 50%; transform: translateY(-50%); color: #94a3b8; font-weight: bold;">$</span>
+                    <input type="number" step="0.01" name="monto" required placeholder="0.00" 
+                           style="width: 100%; padding: 12px 12px 12px 35px; border: 2px solid #f1f5f9; border-radius: 12px; font-size: 1.2rem; font-weight: 700; color: #ef4444; outline: none;">
                 </div>
             </div>
 
-            <table style="width: 100%; border-collapse: collapse;">
-                <thead>
-                    <tr style="text-align: left; background: #f8fafc;">
-                        <th style="padding: 12px; border-bottom: 1px solid #e2e8f0;">Fecha</th>
-                        <th style="padding: 12px; border-bottom: 1px solid #e2e8f0;">Descripción</th>
-                        <th style="padding: 12px; border-bottom: 1px solid #e2e8f0;">Categoría</th>
-                        <th style="padding: 12px; border-bottom: 1px solid #e2e8f0; text-align: right;">Monto</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for g in gastos %}
-                    <tr style="border-bottom: 1px solid #f1f5f9;">
-                        <td style="padding: 12px; font-size: 0.85rem; color: #64748b;">{{ g.fecha.strftime('%d/%m/%Y') }}</td>
-                        <td style="padding: 12px; font-weight: 600;">{{ g.descripcion }}</td>
-                        <td style="padding: 12px;"><span class="badge-success" style="background: #f1f5f9; color: #475569; border: none;">{{ g.categoria }}</span></td>
-                        <td style="padding: 12px; text-align: right; font-weight: 700; color: #1e293b;">${{ "{:,.2f}".format(g.monto) }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
+            <div style="margin-bottom: 30px;">
+                <label style="display: block; margin-bottom: 8px; color: #475569; font-weight: 600; font-size: 0.9rem;">Descripción / Proveedor:</label>
+                <textarea name="descripcion" rows="3" required placeholder="Ej: Pago a empresa eléctrica - Factura #123..." 
+                          style="width: 100%; padding: 12px 15px; border: 2px solid #f1f5f9; border-radius: 12px; background: #f8fafc; font-family: inherit; font-size: 1rem; outline: none; resize: none;"></textarea>
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label>Número de Recibo (Opcional):</label>
+                <input type="text" name="numero_recibo" placeholder="Ej: REC-2024-001" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #ddd;">
+            </div>
+            <div style="display: flex; gap: 15px;">
+                <button type="submit" style="flex: 2; background: #1e293b; color: white; padding: 15px; border: none; border-radius: 12px; font-weight: 700; font-size: 1rem; cursor: pointer; transition: background 0.3s;">
+                    Guardar Gasto
+                </button>
+                <a href="{{ url_for('inicio') }}" style="flex: 1; text-align: center; background: #f1f5f9; color: #64748b; padding: 15px; border-radius: 12px; text-decoration: none; font-weight: 600; font-size: 1rem; display: flex; align-items: center; justify-content: center;">
+                    Volver
+                </a>
+            </div>
+
+        </form>
     </div>
 </div>
 {% endblock %}

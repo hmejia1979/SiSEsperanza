@@ -1,57 +1,74 @@
 {% extends "base.html" %}
-
 {% block content %}
-<div class="admin-container" style="padding: 40px 0;">
-    <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 30px; border-bottom: 2px solid #f1f5f9; padding-bottom: 20px;">
+<div style="max-width: 1100px; margin: 40px auto; padding: 0 20px;">
+    
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
         <div>
-            <h1 style="margin: 0; font-size: 1.8rem; color: #0f172a; font-weight: 800;">🏠 Inventario de Casas</h1>
-            <p style="margin: 5px 0 0; color: #64748b;">Control de propiedades, dueños y saldos pendientes.</p>
+            <h2 style="color: #1e293b; margin: 0; font-size: 1.8rem; font-weight: 800;">🏠 Inventario de Casas</h2>
+            <p style="color: #64748b; margin-top: 5px;">Control de propiedades y estados de cuenta</p>
         </div>
-        <form action="{{ url_for('generar_mensualidad') }}" method="POST" onsubmit="return confirm('¿Generar el cobro de $5.00 para todas las casas?')">
-            <button type="submit" style="background: #10b981; color: white; padding: 12px 24px; border-radius: 10px; border: none; font-weight: 600; font-size: 0.9rem; cursor: pointer; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);">
-                💵 Cobrar Mensualidad ($5)
-            </button>
-        </form>
-        <a href="{{ url_for('registrar_casa') }}" style="background: #1e293b; color: white; padding: 12px 24px; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 0.9rem; transition: 0.3s;">
-            + Agregar Propiedad
+        <a href="{{ url_for('registrar_casa') }}" style="background: #1e293b; color: white; padding: 12px 24px; border-radius: 12px; text-decoration: none; font-weight: 700; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: 0.3s;">
+            + Agregar Nueva Casa
         </a>
     </div>
 
-    <div class="table-card">
-        <table style="width: 100%; border-collapse: collapse;">
+    <div style="overflow-x: auto;">
+        <table style="width: 100%; border-collapse: separate; border-spacing: 0 10px;">
             <thead>
-                <tr style="background: #f8fafc;">
-                    <th style="padding: 16px 24px; text-align: left; font-size: 0.75rem; color: #64748b; border-bottom: 1px solid #e2e8f0;">N° CASA</th>
-                    <th style="padding: 16px 24px; text-align: left; font-size: 0.75rem; color: #64748b; border-bottom: 1px solid #e2e8f0;">PROPIETARIO REGISTRADO</th>
-                    <th style="padding: 16px 24px; text-align: left; font-size: 0.75rem; color: #64748b; border-bottom: 1px solid #e2e8f0;">DEUDA 2025</th>
-                    <th style="padding: 16px 24px; text-align: center; font-size: 0.75rem; color: #64748b; border-bottom: 1px solid #e2e8f0;">HISTORIAL</th>
+                <tr style="text-align: left;">
+                    <th style="padding: 15px 20px; color: #94a3b8; font-size: 0.75rem; text-transform: uppercase;">Propiedad</th>
+                    <th style="padding: 15px 20px; color: #94a3b8; font-size: 0.75rem; text-transform: uppercase;">Propietario / Responsable</th>
+                    <th style="padding: 15px 20px; color: #94a3b8; font-size: 0.75rem; text-transform: uppercase; text-align: right;">Estado de Cuenta</th>
+                    <th style="padding: 15px 20px; color: #94a3b8; font-size: 0.75rem; text-transform: uppercase; text-align: center;">Acciones</th>
                 </tr>
             </thead>
             <tbody>
                 {% for casa in casas %}
-                <tr style="border-bottom: 1px solid #f1f5f9;" onmouseover="this.style.background='#fcfcfc'" onmouseout="this.style.background='white'">
-                    <td style="padding: 16px 24px;">
-                        <span style="background: #eff6ff; color: #3b82f6; padding: 6px 12px; border-radius: 8px; font-weight: 800; font-family: monospace;">
-                            {{ casa.numero_casa }}
-                        </span>
+                <tr style="transition: transform 0.2s;">
+                    <td style="padding: 20px; background: white; border-radius: 15px 0 0 15px; border-left: 1px solid #e2e8f0; border-top: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <div style="background: #f8fafc; color: #1e293b; width: 45px; height: 45px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 800; border: 1px solid #e2e8f0;">
+                                #{{ casa.numero_casa }}
+                            </div>
+                            <span style="font-weight: 600; color: #1e293b;">Villa / Casa</span>
+                        </div>
                     </td>
-                    <td style="padding: 16px 24px;">
-                        <div style="font-weight: 600; color: #1e293b;">{{ casa.dueno_nombre or 'Sin asignar' }}</div>
-                    </td>
-                    <td style="padding: 16px 24px;">
-                        {% if casa.deuda_2025 > 0 %}
-                            <span style="color: #ef4444; font-weight: 700;">${{ "{:,.2f}".format(casa.deuda_2025) }}</span>
+
+                    <td style="padding: 20px; background: white; border-top: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0;">
+                        <div style="font-weight: 700; color: #1e293b;">{{ casa.dueno_nombre }}</div>
+                        {% if casa.usuario_id %}
+                            <div style="font-size: 0.8rem; color: #10b981; display: flex; align-items: center; gap: 4px;">
+                                👤 Acceso activo: {{ casa.propietario_user.username }}
+                            </div>
                         {% else %}
-                            <span style="color: #10b981; font-weight: 600;">$0.00 (Al día)</span>
+                            <div style="font-size: 0.8rem; color: #f59e0b;">
+                                ⚠️ Sin cuenta de acceso
+                            </div>
                         {% endif %}
                     </td>
-                    <td style="padding: 16px 24px; text-align: center;">
-                        <span style="color: #94a3b8; font-size: 0.85rem;">{{ casa.pagos | length }} pagos</span>
+
+                    <td style="padding: 20px; background: white; border-top: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; text-align: right;">
+                        {% if casa.deuda_2025 > 0 %}
+                            <div style="color: #ef4444; font-weight: 800; font-size: 1.1rem;">${{ "{:,.2f}".format(casa.deuda_2025) }}</div>
+                            <span style="font-size: 0.7rem; color: #ef4444; background: #fef2f2; padding: 2px 8px; border-radius: 4px; text-transform: uppercase;">Pendiente</span>
+                        {% else %}
+                            <div style="color: #10b981; font-weight: 800; font-size: 1.1rem;">$0.00</div>
+                            <span style="font-size: 0.7rem; color: #10b981; background: #f0fdf4; padding: 2px 8px; border-radius: 4px; text-transform: uppercase;">Al día</span>
+                        {% endif %}
                     </td>
-                </tr>
-                {% else %}
-                <tr>
-                    <td colspan="4" style="padding: 60px; text-align: center; color: #94a3b8;">No hay propiedades registradas.</td>
+
+                    <td style="padding: 20px; background: white; border-radius: 0 15px 15px 0; border-right: 1px solid #e2e8f0; border-top: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; text-align: center;">
+                        <div style="display: flex; gap: 10px; justify-content: center;">
+                            <a href="{{ url_for('editar_casa', id=casa.id) }}" style="text-decoration: none; color: #3b82f6; background: #eff6ff; padding: 8px 12px; border-radius: 8px; font-size: 0.85rem; font-weight: 600;">
+                                ✏️ Editar
+                            </a>
+                            <form action="{{ url_for('eliminar_casa', id=casa.id) }}" method="POST" onsubmit="return confirm('¿Eliminar esta propiedad? Esto no borrará al usuario.');" style="display: inline;">
+                                <button type="submit" style="background: #fff1f2; color: #e11d48; border: none; padding: 8px 12px; border-radius: 8px; cursor: pointer; font-size: 0.85rem; font-weight: 600;">
+                                    🗑️ Borrar
+                                </button>
+                            </form>
+                        </div>
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>

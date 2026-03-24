@@ -1,39 +1,47 @@
 {% extends "base.html" %}
-
 {% block content %}
-<div class="admin-container" style="max-width: 600px; margin: 0 auto;">
-    <div class="form-card" style="background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
-        <h2 style="color: #2c3e50; margin-bottom: 25px; text-align: center;">Registrar Nuevo Propietario</h2>
+<div style="max-width: 500px; margin: 50px auto; padding: 0 20px;">
+    
+    <div style="background: white; padding: 40px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;">
         
-        <form method="POST">
-            <div style="margin-bottom: 15px;">
-                <label style="display: block; margin-bottom: 5px; font-weight: bold;">Nombre de Usuario:</label>
-                <input type="text" name="nombre" placeholder="Ej: juan_perez" required 
-                       style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+        <div style="text-align: center; margin-bottom: 30px;">
+            <div style="background: #eff6ff; color: #3b82f6; width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 15px; font-size: 1.5rem; font-weight: 800;">
+                👤
             </div>
+            <h2 style="color: #1e293b; margin: 0; font-size: 1.5rem; font-weight: 800;">Nuevo Propietario</h2>
+            <p style="color: #64748b; font-size: 0.9rem; margin-top: 5px;">Cree una cuenta de acceso al sistema</p>
+        </div>
 
-            <div style="margin-bottom: 15px;">
-                <label style="display: block; margin-weight: bold;">Contraseña:</label>
-                <input type="password" name="password" placeholder="Contraseña" required 
-                       style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+        <form method="POST">
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; margin-bottom: 8px; color: #475569; font-weight: 600;">Nombre de Usuario:</label>
+                <input type="text" name="username" required placeholder="Ej: familia_mejia" 
+                       style="width: 100%; padding: 12px; border: 2px solid #f1f5f9; border-radius: 12px; outline: none;">
             </div>
 
             <div style="margin-bottom: 20px;">
-                <label style="display: block; margin-bottom: 5px; font-weight: bold;">Seleccionar Casa Registrada:</label>
-                <select name="casa_id" required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; background-color: white;">
-                    <option value="" disabled selected>-- Elija una casa --</option>
-                    {% for casa in casas %}
-                        <option value="{{ casa.id }}">ID: {{ casa.id }} - {{ casa.numero or 'Casa' }}</option>
-                    {% endfor %}
-                </select>
-                <small style="color: #7f8c8d;">Solo aparecen las casas creadas en la base de datos.</small>
+                <label style="display: block; margin-bottom: 8px; color: #475569; font-weight: 600;">Contraseña Temporal:</label>
+                <input type="password" name="password" required placeholder="••••••••" 
+                       style="width: 100%; padding: 12px; border: 2px solid #f1f5f9; border-radius: 12px; outline: none;">
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; margin-bottom: 8px; color: #475569; font-weight: 600;">Cédula:</label>
+                <input type="text" name="cedula" placeholder="1712345678" 
+                       style="width: 100%; padding: 12px; border: 2px solid #f1f5f9; border-radius: 12px; outline: none;">
+            </div>
+
+            <div style="margin-bottom: 30px;">
+                <label style="display: block; margin-bottom: 8px; color: #475569; font-weight: 600;">Teléfono:</label>
+                <input type="text" name="telefono" placeholder="0991234567" 
+                       style="width: 100%; padding: 12px; border: 2px solid #f1f5f9; border-radius: 12px; outline: none;">
             </div>
 
             <div style="display: flex; gap: 10px;">
-                <button type="submit" class="btn-pago" style="flex: 2; background-color: #2ecc71; color: white; border: none; padding: 12px; border-radius: 6px; cursor: pointer; font-weight: bold;">
-                    Guardar Propietario
+                <button type="submit" style="flex: 2; background: #3b82f6; color: white; padding: 14px; border: none; border-radius: 12px; font-weight: 700; cursor: pointer;">
+                    Crear Cuenta
                 </button>
-                <a href="{{ url_for('lista_propietarios') }}" style="flex: 1; text-align: center; background-color: #95a5a6; color: white; text-decoration: none; padding: 12px; border-radius: 6px; font-weight: bold;">
+                <a href="{{ url_for('lista_propietarios') }}" style="flex: 1; text-align: center; background: #f1f5f9; color: #64748b; padding: 14px; border-radius: 12px; text-decoration: none; font-weight: 600;">
                     Cancelar
                 </a>
             </div>
