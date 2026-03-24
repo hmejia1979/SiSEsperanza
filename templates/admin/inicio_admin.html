@@ -22,10 +22,34 @@
             <small style="color: #94a3b8;">Pagos y mantenimientos</small>
         </div>
 
-        <div style="background: #1e293b; padding: 20px; border-radius: 15px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
-            <p style="color: #cbd5e1; font-size: 0.9rem; margin-bottom: 5px; font-weight: bold;">CAJA DISPONIBLE</p>
-            <h3 style="color: #f8fafc; font-size: 1.8rem; margin: 0;">${{ "{:,.2f}".format(balance) }}</h3>
-            <small style="color: #94a3b8;">Saldo neto actual</small>
+        <div style="background: {{ '#ef4444' if balance < umbral_alerta else '#1e293b' }}; 
+            padding: 20px; border-radius: 15px; 
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); 
+            transition: all 0.5s ease;
+            position: relative; overflow: hidden;">
+    
+            <p style="color: {{ '#fee2e2' if balance < umbral_alerta else '#cbd5e1' }}; 
+                    font-size: 0.9rem; margin-bottom: 5px; font-weight: bold;">
+                CAJA DISPONIBLE
+            </p>
+            
+            <h3 style="color: white; font-size: 1.8rem; margin: 0;">
+                ${{ "{:,.2f}".format(balance) }}
+            </h3>
+
+            {% if balance < umbral_alerta %}
+                <div style="margin-top: 10px; background: rgba(255,255,255,0.2); padding: 5px 10px; border-radius: 8px;">
+                    <small style="color: white; font-weight: bold; display: flex; align-items: center; gap: 5px;">
+                        ⚠️ ¡ALERTA! Fondos insuficientes
+                    </small>
+                </div>
+                <style>
+                    @keyframes pulse-red { 0% { opacity: 1; } 50% { opacity: 0.8; } 100% { opacity: 1; } }
+                    .alerta-caja { animation: pulse-red 2s infinite; }
+                </style>
+            {% else %}
+                <small style="color: #94a3b8;">Saldo neto actual</small>
+            {% endif %}
         </div>
 
     </div>

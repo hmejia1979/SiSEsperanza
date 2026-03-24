@@ -16,9 +16,7 @@ from models import db, Usuario, Casa, Pago, Gasto, RegistroCarga
 
 load_dotenv()
 
-
-load_dotenv()
-
+UMBRAL_ALERTA_CAJA = 30.00  # Se activa si hay menos de $30
 app = Flask(__name__, static_folder='static', static_url_path='/static')
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')
@@ -77,6 +75,7 @@ def inicio():
                                labels=labels,
                                valores=valores,
                                movimientos=movimientos, # Enviamos la lista
+                               umbral_alerta=UMBRAL_ALERTA_CAJA, # <-- ENVIAMOS EL UMBRAL
                                current_time=datetime.now())
     
     return redirect(url_for('mi_estado'))
