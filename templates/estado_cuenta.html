@@ -75,9 +75,16 @@
                         </td>
                     </tr>
                     {% endfor %}
+                    <div style="margin-bottom: 20px; text-align: right;">
+                        <a href="{{ url_for('descargar_mi_estado_pdf') }}" 
+                        style="background: #10b981; color: white; text-decoration: none; padding: 12px 20px; border-radius: 8px; font-weight: bold; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                            📥 Descargar Estado de Cuenta (PDF)
+                        </a>
+                    </div>
                 </tbody>
             </table>
         </div>
     </div>
 </div>
+
 {% endblock %}

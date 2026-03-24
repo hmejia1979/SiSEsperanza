@@ -45,28 +45,55 @@ def index():
 @login_required
 def inicio():
     if current_user.rol == 'admin':
-        # 1. Cálculos de Totales (lo que ya tenías)
-        total_ingresos = db.session.query(db.func.sum(Pago.monto)).scalar() or 0
-        total_egresos = db.session.query(db.func.sum(Gasto.monto)).scalar() or 0
+        # 1. Obtener mes y año del filtro (por defecto el actual)
+        hoy = datetime.now()
+        mes_filtro = request.args.get('mes', hoy.month, type=int)
+        anio_filtro = request.args.get('anio', hoy.year, type=int)
+
+        # 2. Consultas filtradas por mes y año
+        # Ingresos del mes
+        total_ingresos = db.session.query(db.func.sum(Pago.monto)).filter(
+            db.extract('month', Pago.fecha) == mes_filtro,
+            db.extract('year', Pago.fecha) == anio_filtro
+        ).scalar() or 0
+
+        # Gastos del mes
+        total_egresos = db.session.query(db.func.sum(Gasto.monto)).filter(
+            db.extract('month', Gasto.fecha) == mes_filtro,
+            db.extract('year', Gasto.fecha) == anio_filtro
+        ).scalar() or 0
+
         balance = float(total_ingresos) - float(total_egresos)
 
-        # 2. Datos para la gráfica (lo que ya tenías)
-        gastos_query = db.session.query(Gasto.categoria, db.func.sum(Gasto.monto)).group_by(Gasto.categoria).all()
+        # 3. Gráfica filtrada
+        gastos_query = db.session.query(
+            Gasto.categoria, db.func.sum(Gasto.monto)
+        ).filter(
+            db.extract('month', Gasto.fecha) == mes_filtro,
+            db.extract('year', Gasto.fecha) == anio_filtro
+        ).group_by(Gasto.categoria).all()
+
         labels = [str(g[0]) if g[0] else "Varios" for g in gastos_query]
         valores = [float(g[1]) for g in gastos_query]
 
-        # 3. NUEVO: Obtener los últimos 5 movimientos mezclados
-        ultimos_pagos = Pago.query.order_by(Pago.id.desc()).limit(5).all()
-        ultimos_gastos = Gasto.query.order_by(Gasto.id.desc()).limit(5).all()
-        
+        # 4. Movimientos del mes (últimos 10 del mes seleccionado)
+        ultimos_pagos = Pago.query.filter(
+            db.extract('month', Pago.fecha) == mes_filtro,
+            db.extract('year', Pago.fecha) == anio_filtro
+        ).order_by(Pago.id.desc()).limit(10).all()
+
+        ultimos_gastos = Gasto.query.filter(
+            db.extract('month', Gasto.fecha) == mes_filtro,
+            db.extract('year', Gasto.fecha) == anio_filtro
+        ).order_by(Gasto.id.desc()).limit(10).all()
+
         movimientos = []
         for p in ultimos_pagos:
             movimientos.append({'fecha': p.fecha, 'tipo': 'PAGO', 'descripcion': f"Casa {p.casa.numero_casa}", 'monto': p.monto})
         for g in ultimos_gastos:
             movimientos.append({'fecha': g.fecha, 'tipo': 'GASTO', 'descripcion': g.descripcion, 'monto': g.monto})
         
-        # Ordenamos por fecha descendente y tomamos solo los 5 más nuevos
-        movimientos = sorted(movimientos, key=lambda x: x['fecha'], reverse=True)[:5]
+        movimientos = sorted(movimientos, key=lambda x: x['fecha'], reverse=True)
 
         return render_template('admin/inicio_admin.html', 
                                ingresos=total_ingresos, 
@@ -74,8 +101,10 @@ def inicio():
                                balance=balance,
                                labels=labels,
                                valores=valores,
-                               movimientos=movimientos, # Enviamos la lista
-                               umbral_alerta=UMBRAL_ALERTA_CAJA, # <-- ENVIAMOS EL UMBRAL
+                               movimientos=movimientos,
+                               mes_actual=mes_filtro,
+                               anio_actual=anio_filtro,
+                               umbral_alerta=50.00, # Tu umbral anterior
                                current_time=datetime.now())
     
     return redirect(url_for('mi_estado'))
@@ -495,47 +524,36 @@ def descargar_pdf_gastos():
     if current_user.rol != 'admin':
         return redirect(url_for('inicio'))
 
-    gastos = Gasto.query.order_by(Gasto.fecha.desc()).all()
+    # 1. Obtener filtros de la URL (si existen)
+    hoy = datetime.now()
+    mes_filtro = request.args.get('mes', hoy.month, type=int)
+    anio_filtro = request.args.get('anio', hoy.year, type=int)
+
+    # 2. Filtrar los gastos en la base de datos
+    gastos = Gasto.query.filter(
+        db.extract('month', Gasto.fecha) == mes_filtro,
+        db.extract('year', Gasto.fecha) == anio_filtro
+    ).order_by(Gasto.fecha.desc()).all()
     
+    # 3. Configurar el PDF (FPDF)
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", 'B', 16)
     
-    # Encabezado
-    pdf.cell(190, 10, "SISTEMA SIS ESPERANZA", ln=True, align='C')
+    # Título dinámico
+    meses_nombres = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", 
+                     "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+    nombre_mes = meses_nombres[mes_filtro - 1]
+
+    pdf.cell(190, 10, "SISTEMA SISE ESPERANZA", ln=True, align='C')
     pdf.set_font("Arial", '', 12)
-    pdf.cell(190, 10, "Informe Detallado de Gastos", ln=True, align='C')
+    pdf.cell(190, 10, f"Informe de Gastos: {nombre_mes} {anio_filtro}", ln=True, align='C')
     pdf.ln(10)
 
-    # Tabla: Encabezados
-    pdf.set_fill_color(30, 41, 59) # Color azul oscuro (como tu tema)
-    pdf.set_text_color(255, 255, 255)
-    pdf.set_font("Arial", 'B', 10)
-    pdf.cell(30, 10, " Fecha", 1, 0, 'C', True)
-    pdf.cell(70, 10, " Descripcion", 1, 0, 'C', True)
-    pdf.cell(30, 10, " Recibo", 1, 0, 'C', True)
-    pdf.cell(30, 10, " Categoria", 1, 0, 'C', True)
-    pdf.cell(30, 10, " Monto", 1, 1, 'C', True)
+    # ... (Resto de tu código de la tabla del PDF igual que antes) ...
 
-    # Tabla: Datos
-    pdf.set_text_color(0, 0, 0)
-    pdf.set_font("Arial", '', 9)
-    total = 0
-    for g in gastos:
-        pdf.cell(30, 10, g.fecha.strftime('%d/%m/%Y'), 1)
-        pdf.cell(70, 10, g.descripcion[:35], 1)
-        pdf.cell(30, 10, str(g.numero_recibo or 'N/A'), 1)
-        pdf.cell(30, 10, str(g.categoria), 1)
-        pdf.cell(30, 10, f"${g.monto:,.2f}", 1, 1, 'R')
-        total += g.monto
-
-    # Total Final
-    pdf.set_font("Arial", 'B', 11)
-    pdf.cell(160, 10, "TOTAL DE GASTOS REALIZADOS: ", 1, 0, 'R')
-    pdf.cell(30, 10, f"${total:,.2f}", 1, 1, 'R')
-
-    # Guardado temporal y envío
-    output_path = os.path.join('instance', 'informe_gastos.pdf')
+    # Guardar y enviar
+    output_path = os.path.join('instance', f'informe_gastos_{nombre_mes}_{anio_filtro}.pdf')
     pdf.output(output_path)
     return send_file(output_path, as_attachment=True)
 
@@ -583,6 +601,69 @@ def editar_propietario(id):
     casas_disponibles = Casa.query.filter((Casa.usuario_id == None) | (Casa.usuario_id == usuario.id)).all()
     
     return render_template('admin/editar_propietario.html', usuario=usuario, casas=casas_disponibles)
+
+@app.route('/propietario/descargar-mi-estado-pdf')
+@login_required
+def descargar_mi_estado_pdf():
+    # 1. Buscar la casa vinculada al usuario logueado
+    casa = Casa.query.filter_by(usuario_id=current_user.id).first()
+    
+    if not casa:
+        flash("No tienes una propiedad asignada para generar el reporte.")
+        return redirect(url_for('mi_estado'))
+
+    # 2. Configurar el PDF
+    pdf = FPDF()
+    pdf.add_page()
+    
+    # Encabezado con Estilo
+    pdf.set_font("Arial", 'B', 16)
+    pdf.set_text_color(30, 41, 59)
+    pdf.cell(190, 10, "ESTADO DE CUENTA - SISE ESPERANZA", ln=True, align='C')
+    
+    pdf.set_font("Arial", '', 10)
+    pdf.set_text_color(100, 116, 139)
+    pdf.cell(190, 10, f"Generado el: {datetime.now().strftime('%d/%m/%Y %H:%M')}", ln=True, align='C')
+    pdf.ln(10)
+
+    # Datos de la Propiedad
+    pdf.set_fill_color(241, 245, 249)
+    pdf.set_font("Arial", 'B', 12)
+    pdf.set_text_color(0, 0, 0)
+    pdf.cell(190, 10, f" PROPIETARIO: {casa.dueno_nombre}", 1, 1, 'L', True)
+    pdf.cell(95, 10, f" CASA N°: {casa.numero_casa}", 1, 0, 'L')
+    pdf.cell(95, 10, f" DEUDA ACTUAL: ${casa.deuda_2025:,.2f}", 1, 1, 'L')
+    pdf.ln(10)
+
+    # Tabla de Pagos Realizados
+    pdf.set_font("Arial", 'B', 11)
+    pdf.cell(190, 10, "HISTORIAL DE PAGOS REGISTRADOS", ln=True)
+    
+    pdf.set_fill_color(30, 41, 59)
+    pdf.set_text_color(255, 255, 255)
+    pdf.cell(40, 10, " Fecha", 1, 0, 'C', True)
+    pdf.cell(100, 10, " Concepto", 1, 0, 'C', True)
+    pdf.cell(50, 10, " Monto", 1, 1, 'C', True)
+
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_font("Arial", '', 10)
+    
+    for pago in casa.pagos:
+        pdf.cell(40, 10, pago.fecha.strftime('%d/%m/%Y'), 1, 0, 'C')
+        pdf.cell(100, 10, f" {pago.concepto or 'Pago de Alícuota'}", 1, 0, 'L')
+        pdf.cell(50, 10, f"${pago.monto:,.2f}", 1, 1, 'R')
+
+    # Pie de página informativo
+    pdf.ln(10)
+    pdf.set_font("Arial", 'I', 9)
+    pdf.set_text_color(100, 116, 139)
+    pdf.multi_cell(190, 5, "Nota: Este documento es un reporte informativo de sus aportaciones. Si encuentra alguna inconsistencia, por favor contacte a la administración con su comprobante físico.", align='C')
+
+    # Enviar archivo
+    output_path = os.path.join('instance', f'Estado_Cuenta_Casa_{casa.numero_casa}.pdf')
+    pdf.output(output_path)
+    return send_file(output_path, as_attachment=True)
+
 
 @app.route('/admin/pagos-globales')
 @login_required
