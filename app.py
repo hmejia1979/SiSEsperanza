@@ -47,26 +47,37 @@ def index():
 @login_required
 def inicio():
     if current_user.rol == 'admin':
-        # 1. Calculamos los datos (asegurándonos de definir las variables)
+        # 1. Cálculos de Totales (lo que ya tenías)
         total_ingresos = db.session.query(db.func.sum(Pago.monto)).scalar() or 0
         total_egresos = db.session.query(db.func.sum(Gasto.monto)).scalar() or 0
         balance = float(total_ingresos) - float(total_egresos)
 
-        # 2. Consultar gastos para la gráfica
-        gastos_query = db.session.query(
-            Gasto.categoria, db.func.sum(Gasto.monto)
-        ).group_by(Gasto.categoria).all()
-
-        labels = [str(g[0]) for g in gastos_query]
+        # 2. Datos para la gráfica (lo que ya tenías)
+        gastos_query = db.session.query(Gasto.categoria, db.func.sum(Gasto.monto)).group_by(Gasto.categoria).all()
+        labels = [str(g[0]) if g[0] else "Varios" for g in gastos_query]
         valores = [float(g[1]) for g in gastos_query]
 
-        # 3. Enviamos TODAS las variables al HTML
+        # 3. NUEVO: Obtener los últimos 5 movimientos mezclados
+        ultimos_pagos = Pago.query.order_by(Pago.id.desc()).limit(5).all()
+        ultimos_gastos = Gasto.query.order_by(Gasto.id.desc()).limit(5).all()
+        
+        movimientos = []
+        for p in ultimos_pagos:
+            movimientos.append({'fecha': p.fecha, 'tipo': 'PAGO', 'descripcion': f"Casa {p.casa.numero_casa}", 'monto': p.monto})
+        for g in ultimos_gastos:
+            movimientos.append({'fecha': g.fecha, 'tipo': 'GASTO', 'descripcion': g.descripcion, 'monto': g.monto})
+        
+        # Ordenamos por fecha descendente y tomamos solo los 5 más nuevos
+        movimientos = sorted(movimientos, key=lambda x: x['fecha'], reverse=True)[:5]
+
         return render_template('admin/inicio_admin.html', 
                                ingresos=total_ingresos, 
                                egresos=total_egresos, 
                                balance=balance,
                                labels=labels,
-                               valores=valores)
+                               valores=valores,
+                               movimientos=movimientos, # Enviamos la lista
+                               current_time=datetime.now())
     
     return redirect(url_for('mi_estado'))
 

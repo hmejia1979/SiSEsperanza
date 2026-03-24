@@ -2,10 +2,14 @@
 venv/
 .env
 
-# Base de datos (No se sube para que no se sobreescriba en otros lados)
+# Base de datos (No subir para no sobrescribir datos reales)
 instance/
 *.db
 
-# Cache de Python
+# Python
 __pycache__/
 *.pyc
+
+# PDFs generados
+instance/*.pdf
+informe_gastos.pdf

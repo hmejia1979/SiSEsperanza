@@ -1,47 +1,107 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="admin-container">
-    <h1 style="text-align: center;">Panel de Control</h1>
-
-    <div style="display: flex; gap: 20px; justify-content: center; margin-bottom: 30px;">
-        <div class="form-card" style="flex: 1; text-align: center; border-top: 5px solid green;">
-            <h3>Ingresos</h3>
-            <p style="font-size: 24px;">$ {{ ingresos }}</p>
-        </div>
-        <div class="form-card" style="flex: 1; text-align: center; border-top: 5px solid orange;">
-            <h3>Gastos</h3>
-            <p style="font-size: 24px;">$ {{ egresos }}</p>
-        </div>
-        <div class="form-card" style="flex: 1; text-align: center; border-top: 5px solid blue;">
-            <h3>Balance</h3>
-            <p style="font-size: 24px;">$ {{ balance }}</p>
-        </div>
+<div style="padding: 20px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f8fafc;">
+    
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+        <h2 style="color: #1e293b; margin: 0;">📊 Panel de Control Administrativo</h2>
+        <span style="color: #64748b; font-weight: 500;">{{ current_time.strftime('%A, %d de %B %Y') if current_time else '' }}</span>
     </div>
 
-    <div class="table-card" style="max-width: 600px; margin: 0 auto; padding: 20px;">
-        <h3 style="text-align: center;">Gastos por Categoría</h3>
-        <canvas id="graficaGastos" style="max-height: 300px;"></canvas>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-bottom: 30px;">
+        
+        <div style="background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border-left: 5px solid #10b981;">
+            <p style="color: #64748b; font-size: 0.9rem; margin-bottom: 5px; font-weight: bold;">TOTAL INGRESOS</p>
+            <h3 style="color: #10b981; font-size: 1.8rem; margin: 0;">${{ "{:,.2f}".format(ingresos) }}</h3>
+            <small style="color: #94a3b8;">Recaudación total histórica</small>
+        </div>
+
+        <div style="background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border-left: 5px solid #ef4444;">
+            <p style="color: #64748b; font-size: 0.9rem; margin-bottom: 5px; font-weight: bold;">TOTAL GASTOS</p>
+            <h3 style="color: #ef4444; font-size: 1.8rem; margin: 0;">${{ "{:,.2f}".format(egresos) }}</h3>
+            <small style="color: #94a3b8;">Pagos y mantenimientos</small>
+        </div>
+
+        <div style="background: #1e293b; padding: 20px; border-radius: 15px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+            <p style="color: #cbd5e1; font-size: 0.9rem; margin-bottom: 5px; font-weight: bold;">CAJA DISPONIBLE</p>
+            <h3 style="color: #f8fafc; font-size: 1.8rem; margin: 0;">${{ "{:,.2f}".format(balance) }}</h3>
+            <small style="color: #94a3b8;">Saldo neto actual</small>
+        </div>
+
+    </div>
+
+    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 25px;">
+        
+        <div style="background: white; padding: 25px; border-radius: 15px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+            <h4 style="margin-top: 0; color: #334155;">Distribución de Gastos por Categoría</h4>
+            <canvas id="chartGastos" style="max-height: 300px;"></canvas>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 15px;">
+            <a href="{{ url_for('registrar_pago') }}" style="text-decoration: none; background: #3b82f6; color: white; padding: 15px; border-radius: 10px; text-align: center; font-weight: bold; transition: 0.3s;">➕ Registrar Nuevo Pago</a>
+            <a href="{{ url_for('registrar_gasto') }}" style="text-decoration: none; background: #64748b; color: white; padding: 15px; border-radius: 10px; text-align: center; font-weight: bold;">💸 Registrar Gasto</a>
+            <a href="{{ url_for('descargar_pdf_gastos') }}" style="text-decoration: none; border: 2px solid #ef4444; color: #ef4444; padding: 15px; border-radius: 10px; text-align: center; font-weight: bold;">📄 Exportar Informe PDF</a>
+        </div>
     </div>
 </div>
-
+<div style="margin-top: 30px; background: white; padding: 25px; border-radius: 15px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+        <h4 style="margin-top: 0; color: #1e293b; display: flex; align-items: center; gap: 10px;">
+            🕒 Actividad Reciente (Últimos 5 movimientos)
+        </h4>
+        <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                <thead>
+                    <tr style="border-bottom: 2px solid #f1f5f9;">
+                        <th style="padding: 12px; color: #64748b; font-size: 0.85rem;">FECHA</th>
+                        <th style="padding: 12px; color: #64748b; font-size: 0.85rem;">TIPO</th>
+                        <th style="padding: 12px; color: #64748b; font-size: 0.85rem;">DESCRIPCIÓN</th>
+                        <th style="padding: 12px; color: #64748b; font-size: 0.85rem; text-align: right;">MONTO</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for mov in movimientos %}
+                    <tr style="border-bottom: 1px solid #f1f5f9; transition: 0.2s;" onmouseover="this.style.backgroundColor='#f8fafc'" onmouseout="this.style.backgroundColor='transparent'">
+                        <td style="padding: 12px; color: #1e293b; font-size: 0.9rem;">{{ mov.fecha.strftime('%d/%m/%Y') }}</td>
+                        <td style="padding: 12px;">
+                            {% if mov.tipo == 'PAGO' %}
+                            <span style="background: #dcfce7; color: #166534; padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: bold;">PAGO RECIBIDO</span>
+                            {% else %}
+                            <span style="background: #fee2e2; color: #991b1b; padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: bold;">GASTO REGISTRADO</span>
+                            {% endif %}
+                        </td>
+                        <td style="padding: 12px; color: #475569; font-size: 0.9rem;">{{ mov.descripcion }}</td>
+                        <td style="padding: 12px; text-align: right; font-weight: bold; color: {{ '#10b981' if mov.tipo == 'PAGO' else '#ef4444' }};">
+                            {{ '+' if mov.tipo == 'PAGO' else '-' }}${{ "{:,.2f}".format(mov.monto) }}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="4" style="padding: 20px; text-align: center; color: #94a3b8;">No hay movimientos recientes.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-    // Pasamos los datos de Python a JS de forma segura
-    const datosLabels = {{ labels | tojson | safe }};
-    const datosValores = {{ valores | tojson | safe }};
-
-    if (datosLabels.length > 0) {
-        new Chart(document.getElementById('graficaGastos'), {
-            type: 'doughnut',
-            data: {
-                labels: datosLabels,
-                datasets: [{
-                    data: datosValores,
-                    backgroundColor: ['#e67e22', '#3498db', '#f1c40f', '#e74c3c', '#2ecc71']
-                }]
+    const ctx = document.getElementById('chartGastos').getContext('2d');
+    new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: {{ labels|tojson }},
+            datasets: [{
+                data: {{ valores|tojson }},
+                backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'],
+                hoverOffset: 4
+            }]
+        },
+        options: {
+            plugins: {
+                legend: { position: 'bottom' }
             }
-        });
-    }
+        }
+    });
+    
 </script>
 {% endblock %}
