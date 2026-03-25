@@ -55,3 +55,8 @@ class RegistroCarga(db.Model):
     mes = db.Column(db.Integer, nullable=False)
     anio = db.Column(db.Integer, nullable=False)
     fecha_ejecucion = db.Column(db.DateTime, default=datetime.utcnow)
+    
+class Configuracion(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    clave = db.Column(db.String(50), unique=True, nullable=False) # Ej: 'valor_alicuota'
+    valor = db.Column(db.Float, nullable=False)

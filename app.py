@@ -12,7 +12,7 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 
 # Modelos
-from models import db, Usuario, Casa, Pago, Gasto, RegistroCarga
+from models import db, Usuario, Casa, Pago, Gasto, RegistroCarga,Configuracion
 
 load_dotenv()
 
@@ -111,6 +111,43 @@ def inicio():
 
 from datetime import datetime
 
+@app.route('/admin/configuracion', methods=['GET', 'POST'])
+@login_required
+def configuracion():
+    if current_user.rol != 'admin':
+        return redirect(url_for('inicio'))
+
+    # Buscamos Alícuota y WhatsApp (o los creamos si no existen)
+    conf_alicuota = Configuracion.query.filter_by(clave='valor_alicuota').first()
+    if not conf_alicuota:
+        conf_alicuota = Configuracion(clave='valor_alicuota', valor=5.0)
+        db.session.add(conf_alicuota)
+
+    conf_whatsapp = Configuracion.query.filter_by(clave='whatsapp_admin').first()
+    if not conf_whatsapp:
+        # Pon tu número por defecto aquí (sin el +)
+        conf_whatsapp = Configuracion(clave='whatsapp_admin', valor=593900000000) 
+        db.session.add(conf_whatsapp)
+    
+    db.session.commit()
+
+    if request.method == 'POST':
+        nuevo_valor_ali = request.form.get('valor_alicuota')
+        nuevo_ws = request.form.get('whatsapp_admin')
+        
+        if nuevo_valor_ali:
+            conf_alicuota.valor = float(nuevo_valor_ali)
+        if nuevo_ws:
+            conf_whatsapp.valor = float(nuevo_ws)
+            
+        db.session.commit()
+        flash("✅ Configuración actualizada con éxito")
+        return redirect(url_for('configuracion'))
+
+    return render_template('admin/configuracion.html', 
+                           alicuota=conf_alicuota.valor, 
+                           whatsapp=int(conf_whatsapp.valor))
+
 @app.route('/admin/generar-alicuotas-mes', methods=['POST'])
 @login_required
 def generar_alicuotas():
@@ -130,19 +167,20 @@ def generar_alicuotas():
 
     try:
         # 2. Si no existe, procedemos a cargar la deuda
-        VALOR_ALICUOTA = 5.00
+        conf = Configuracion.query.filter_by(clave='valor_alicuota').first()
+        VALOR_A_COBRAR = conf.valor if conf else 5.0 # Fallback por si acaso
         todas_las_casas = Casa.query.all()
         
         for casa in todas_las_casas:
             deuda_actual = casa.deuda_2025 or 0.0
-            casa.deuda_2025 = deuda_actual + VALOR_ALICUOTA
+            casa.deuda_2025 = deuda_actual + VALOR_A_COBRAR
         
         # 3. Guardamos el registro de que ya se hizo este mes
         nuevo_registro = RegistroCarga(mes=mes_actual, anio=anio_actual)
         db.session.add(nuevo_registro)
         
         db.session.commit()
-        flash(f"🚀 Éxito: Se cargaron ${VALOR_ALICUOTA} a todas las casas para el mes {mes_actual}.")
+        flash(f"🚀 Éxito: Se cargaron ${VALOR_A_COBRAR} a todas las casas para el mes {mes_actual}.")
         
     except Exception as e:
         db.session.rollback()
@@ -296,19 +334,15 @@ def generar_recibo_pdf(pago, casa):
 @login_required
 def registrar_casa():
     if request.method == 'POST':
-        # 1. Obtenemos los datos del formulario (lo que dice name="...")
-        print("DATOS RECIBIDOS:", request.form)
+        # ... (tu código actual de guardado se mantiene igual) ...
         num = request.form.get('numero_casa')
-        nombre = request.form.get('propietario') # <-- ¿Coincide con el HTML?
+        nombre = request.form.get('propietario')
         deuda = request.form.get('deuda_inicial')
         u_id = request.form.get('usuario_id')
 
-        # 2. Creamos el objeto Casa
-        # IMPORTANTE: Los nombres a la IZQUIERDA del '=' deben ser 
-        # IGUALES a los de tu class Casa(db.Model)
         nueva_casa = Casa(
             numero_casa=num,
-            dueno_nombre=nombre,      # <--- AQUÍ ESTABA EL POSIBLE ERROR
+            dueno_nombre=nombre,
             deuda_2025=float(deuda) if deuda else 0.0,
             usuario_id=int(u_id) if u_id and u_id != "" else None
         )
@@ -323,8 +357,15 @@ def registrar_casa():
             flash(f"❌ Error al guardar: {str(e)}")
             return redirect(url_for('registrar_casa'))
 
-    propietarios = Usuario.query.filter_by(rol='propietario').all()
-    return render_template('admin/registrar_casa.html', usuarios=propietarios)
+    # --- AQUÍ ESTÁ EL CAMBIO FILTRADO ---
+    # Buscamos solo usuarios con rol 'propietario' que NO estén en la tabla Casa
+    usuarios_ocupados = db.session.query(Casa.usuario_id).filter(Casa.usuario_id != None)
+    propietarios_libres = Usuario.query.filter(
+        Usuario.rol == 'propietario',
+        Usuario.id.not_in(usuarios_ocupados)
+    ).all()
+
+    return render_template('admin/registrar_casa.html', usuarios=propietarios_libres)
 
 
 @app.route('/admin/generar-mensualidad', methods=['POST'])
@@ -454,14 +495,12 @@ def registrar_usuario():
         return redirect(url_for('inicio'))
 
     if request.method == 'POST':
-        # Capturamos TODO lo que viene del HTML
         username = request.form.get('username')
         password = request.form.get('password')
         cedula = request.form.get('cedula')
         telefono = request.form.get('telefono')
-        casa_id = request.form.get('casa_id') # El ID de la casa elegida
+        casa_id = request.form.get('casa_id') 
 
-        # Creamos el usuario con todos sus datos
         nuevo_usuario = Usuario(
             username=username,
             password=generate_password_hash(password),
@@ -471,21 +510,23 @@ def registrar_usuario():
         )
         
         db.session.add(nuevo_usuario)
-        db.session.flush() # Esto "pre-guarda" para obtener el ID del usuario
+        db.session.flush() 
 
-        # Si eligió una casa, la vinculamos de una vez
         if casa_id:
-            casa = Casa.query.get(casa_id)
+            casa = db.session.get(Casa, int(casa_id))
             if casa:
                 casa.usuario_id = nuevo_usuario.id
+                # IMPORTANTE: Sincronizamos el nombre para que no se borre
+                casa.dueno_nombre = username 
+                # NO tocamos casa.deuda_2025, así se mantiene la que ya tenía
         
         db.session.commit()
         flash("✅ Propietario creado y vinculado correctamente.")
         return redirect(url_for('lista_propietarios'))
 
-    # Para el GET: Solo mostramos casas que no tienen dueño
     casas_disponibles = Casa.query.filter_by(usuario_id=None).all()
     return render_template('admin/registrar_usuario.html', casas=casas_disponibles)
+
 
 @app.route('/admin/registrar-gasto', methods=['GET', 'POST'])
 @login_required
@@ -570,37 +611,36 @@ def editar_propietario(id):
 
     if request.method == 'POST':
         usuario.username = request.form.get('username')
+        usuario.cedula = request.form.get('cedula')
+        usuario.telefono = request.form.get('telefono')
         nueva_pass = request.form.get('password')
         nueva_casa_id = request.form.get('casa_id')
-        usuario.username = request.form.get('username')
-        usuario.cedula = request.form.get('cedula')     # <-- Captura cédula
-        usuario.telefono = request.form.get('telefono') # <-- Captura teléfono
-        usuario.correo = request.form.get('correo') 
-        # 1. Actualizar contraseña si se escribió una
+        
         if nueva_pass and nueva_pass.strip() != "":
             usuario.password = generate_password_hash(nueva_pass)
             
-        # 2. Actualizar vinculación de casa
-        # Primero quitamos al usuario de su casa actual (si tenía una)
-        casa_actual = Casa.query.filter_by(usuario_id=usuario.id).first()
-        if casa_actual:
-            casa_actual.usuario_id = None
+        # Desvincular de casa anterior si existía
+        casa_anterior = Casa.query.filter_by(usuario_id=usuario.id).first()
+        if casa_anterior:
+            casa_anterior.usuario_id = None
+            # Opcional: ¿Quieres borrar el nombre de la casa si se queda sola? 
+            # Mejor dejarlo para no perder historial visual.
         
-        # Luego lo asignamos a la nueva casa seleccionada
+        # Vincular a la nueva casa
         if nueva_casa_id:
             nueva_casa = db.session.get(Casa, int(nueva_casa_id))
             if nueva_casa:
                 nueva_casa.usuario_id = usuario.id
+                # Sincronizamos nombre para que la tabla Casa esté actualizada
+                nueva_casa.dueno_nombre = usuario.username 
             
         db.session.commit()
         flash("Datos y vinculación actualizados correctamente")
-        
         return redirect(url_for('lista_propietarios'))
 
-    # Buscamos casas libres + la casa que ya tiene este usuario
     casas_disponibles = Casa.query.filter((Casa.usuario_id == None) | (Casa.usuario_id == usuario.id)).all()
-    
     return render_template('admin/editar_propietario.html', usuario=usuario, casas=casas_disponibles)
+
 
 @app.route('/propietario/descargar-mi-estado-pdf')
 @login_required
@@ -687,24 +727,41 @@ def editar_casa(id):
     
     if request.method == 'POST':
         casa.numero_casa = request.form.get('numero_casa')
-        casa.dueno_nombre = request.form.get('propietario') # El 'name' de tu HTML
-        casa.deuda_2025 = float(request.form.get('deuda_inicial') or 0)
+        casa.dueno_nombre = request.form.get('dueno_nombre')
         
-        # Actualizamos el vínculo con el usuario
+        nueva_deuda = request.form.get('deuda_2025')
+        if nueva_deuda is not None:
+            casa.deuda_2025 = float(nueva_deuda)
+        
         u_id = request.form.get('usuario_id')
         casa.usuario_id = int(u_id) if u_id and u_id != "" else None
         
         db.session.commit()
-        flash("🏠 Casa actualizada correctamente")
+        flash(f"🏠 Casa {casa.numero_casa} actualizada correctamente")
         return redirect(url_for('lista_casas'))
 
-    # --- ESTA ES LA PARTE QUE FALTA ---
-    # Buscamos a todos los propietarios para que aparezcan en la lista desplegable
-    propietarios_disponibles = Usuario.query.filter_by(rol='propietario').all()
+    # --- LÓGICA DE FILTRADO PARA EL GET ---
     
+    # 1. Obtenemos los IDs de todos los usuarios que ya tienen una casa...
+    # ... PERO excluimos de esa lista negra al usuario que ya tiene ESTA casa.
+    usuarios_ocupados_ids = db.session.query(Casa.usuario_id).filter(
+        Casa.usuario_id != None, 
+        Casa.usuario_id != casa.usuario_id
+    ).all()
+    
+    # Convertimos la lista de tuplas a una lista simple de IDs
+    lista_negra = [id[0] for id in usuarios_ocupados_ids]
+
+    # 2. Filtramos los propietarios: que tengan el rol y que NO estén en la lista negra
+    propietarios_disponibles = Usuario.query.filter(
+        Usuario.rol == 'propietario',
+        Usuario.id.not_in(lista_negra) if lista_negra else True
+    ).all()
+
     return render_template('admin/editar_casa.html', 
                            casa=casa, 
-                           usuarios=propietarios_disponibles) # Enviamos la lista
+                           usuarios=propietarios_disponibles)
+
 
 @app.route('/admin/eliminar-casa/<int:id>', methods=['POST'])
 @login_required

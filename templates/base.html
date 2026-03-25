@@ -26,6 +26,12 @@
                 <a class="nav-link" href="{{ url_for('lista_propietarios') }}">👥 Propietarios</a>
                 <a class="nav-link" href="{{ url_for('pagos_globales') }}">💰 Pagos</a>
                 <a class="nav-link" href="{{ url_for('registrar_gasto') }}">💸 Gastos</a>
+                <a href="{{ url_for('configuracion') }}" 
+                    style="color: #94a3b8; text-decoration: none; display: flex; align-items: center; gap: 8px; padding: 10px; border-radius: 8px; transition: 0.3s;"
+                    onmouseover="this.style.color='#f8fafc'; this.style.backgroundColor='#334155'"
+                    onmouseout="this.style.color='#94a3b8'; this.style.backgroundColor='transparent'">
+                        <span>⚙️</span> Configuración
+                </a>
             {% else %}
                 <a class="nav-link" href="{{ url_for('inicio') }}">📊 Mi Estado</a>
                 <div style="display: flex; align-items: center; gap: 15px; margin-left: 10px;">
@@ -79,6 +85,32 @@
             {% endblock %}
         </div>
     </div>
+<a href="https://wa.me/593996179149?text=Hola%20Administrador,%20tengo%20una%20consulta%20sobre%20el%20sistema%20SISE%20Esperanza." 
+   target="_blank" 
+   style="position: fixed; 
+          bottom: 20px; 
+          right: 20px; 
+          background-color: #25d366; 
+          color: white; 
+          border-radius: 50%; 
+          width: 60px; 
+          height: 60px; 
+          display: flex; 
+          justify-content: center; 
+          align-items: center; 
+          font-size: 30px; 
+          box-shadow: 2px 2px 10px rgba(0,0,0,0.2); 
+          z-index: 1000; 
+          text-decoration: none;
+          transition: transform 0.3s ease;">
+    <span style="line-height: 0;">📱</span>
+</a>
 
+<script>
+    // Efecto simple al pasar el mouse
+    const btn = document.querySelector('a[href^="https://wa.me"]');
+    btn.onmouseover = () => btn.style.transform = "scale(1.1)";
+    btn.onmouseout = () => btn.style.transform = "scale(1)";
+</script>
 </body>
 </html>
