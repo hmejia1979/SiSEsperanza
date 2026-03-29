@@ -31,6 +31,14 @@ def load_user(user_id):
     # Esto quita el error de LegacyAPIWarning
     return db.session.get(Usuario, int(user_id))
 
+@app.context_processor
+def inject_config():
+    # Buscamos el número en la base de datos
+    conf_ws = Configuracion.query.filter_by(clave='whatsapp_admin').first()
+    # Si existe, lo convertimos a entero para limpiar puntos decimales, si no, uno por defecto
+    num_ws = int(conf_ws.valor) if conf_ws else "593900000000"
+    return dict(whatsapp_global=num_ws)
+
 @app.route('/')
 def index():
     # Esta función decide qué es lo primero que ve el usuario
@@ -40,7 +48,35 @@ def index():
     else:
         # Si es un usuario nuevo o no se ha identificado
         return redirect(url_for('login'))
-    
+
+@app.route('/cambiar-password', methods=['GET', 'POST'])
+@login_required
+def cambiar_password():
+    if request.method == 'POST':
+        pass_actual = request.form.get('password_actual')
+        nueva_pass = request.form.get('nueva_password')
+        confirmar_pass = request.form.get('confirmar_password')
+
+        # 1. Verificar si la contraseña actual es correcta
+        if not check_password_hash(current_user.password, pass_actual):
+            flash("❌ La contraseña actual es incorrecta.", "danger")
+            return redirect(url_for('cambiar_password'))
+
+        # 2. Verificar que las nuevas coincidan
+        if nueva_pass != confirmar_pass:
+            flash("❌ Las nuevas contraseñas no coinciden.", "danger")
+            return redirect(url_for('cambiar_password'))
+
+        # 3. Guardar la nueva contraseña (hasheada)
+        current_user.password = generate_password_hash(nueva_pass)
+        db.session.commit()
+        
+        flash("✅ Contraseña actualizada con éxito.",'success')
+        return redirect(url_for('inicio'))
+
+    return render_template('cambiar_password.html')
+
+
 @app.route('/inicio')
 @login_required
 def inicio():
@@ -200,10 +236,10 @@ def login():
         # Esta es la parte clave:
         if user and check_password_hash(user.password, password):
             login_user(user)
-            flash('¡Bienvenido de nuevo!')
+            flash('¡Bienvenido de nuevo!','success')
             return redirect(url_for('inicio'))
         else:
-            flash('Usuario o contraseña incorrectos')
+            flash('Usuario o contraseña incorrectos','success')
             
     return render_template('login.html')
 
