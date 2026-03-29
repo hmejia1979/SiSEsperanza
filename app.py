@@ -11,6 +11,7 @@ from fpdf import FPDF
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 
+
 # Modelos
 from models import db, Usuario, Casa, Pago, Gasto, RegistroCarga,Configuracion
 
@@ -497,6 +498,32 @@ def lista_propietarios():
     print(f"Total en DB: {len(todos)} | Roles encontrados: {[u.rol for u in todos]}")
     return render_template('propietarios.html', propietarios=lista_users)
  
+
+@app.route('/admin/reportes')
+@login_required
+def reportes():
+    if current_user.rol != 'admin':
+        return redirect(url_for('inicio'))
+
+    # Usamos float() para convertir el resultado de la base de datos
+    # El 'or 0' es vital por si la tabla está vacía
+    ingresos_db = db.session.query(func.sum(Pago.monto)).scalar()
+    total_ingresos = float(ingresos_db) if ingresos_db else 0.0
+
+    gastos_db = db.session.query(func.sum(Gasto.monto)).scalar()
+    total_gastos = float(gastos_db) if gastos_db else 0.0
+
+    deuda_db = db.session.query(func.sum(Casa.deuda_2025)).scalar()
+    deuda_total_vecinos = float(deuda_db) if deuda_db else 0.0
+
+    # Ahora sí, float - float = ¡Éxito!
+    saldo_actual = total_ingresos - total_gastos
+
+    return render_template('admin/reportes.html', 
+                           ingresos=total_ingresos, 
+                           gastos=total_gastos, 
+                           saldo=saldo_actual,
+                           deuda_pendiente=deuda_total_vecinos)
 
 @app.route('/admin/reporte-morosos')
 @login_required
