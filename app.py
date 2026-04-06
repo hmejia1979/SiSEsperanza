@@ -1,26 +1,97 @@
 import os
+import io
+import pandas as pd
 from datetime import datetime
 from io import BytesIO
-
+from dotenv import load_dotenv
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
+from flask_apscheduler import APScheduler
+from sqlalchemy import func, or_
 from werkzeug.security import generate_password_hash, check_password_hash
-from dotenv import load_dotenv
-from sqlalchemy import func
-from fpdf import FPDF
 from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import letter
+from reportlab.lib.pagesizes import A4, letter
+from reportlab.lib import colors
+from reportlab.lib.units import mm
+from fpdf import FPDF
 
-
-# Modelos
-from models import db, Usuario, Casa, Pago, Gasto, RegistroCarga,Configuracion
-
+from models import db, Usuario, Casa, Pago, Gasto, Configuracion, Deuda
 load_dotenv()
 
 UMBRAL_ALERTA_CAJA = 30.00  # Se activa si hay menos de $30
 app = Flask(__name__, static_folder='static', static_url_path='/static')
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')
+
+scheduler = APScheduler()
+
+def tarea_cobro_mensual():
+    with app.app_context():
+        # 1. Obtener el valor de la alícuota desde la configuración
+        config = Configuracion.query.filter_by(clave='valor_alicuota').first()
+        valor = float(config.valor) if config else 20.0
+        
+        # 2. Sumar a todas las casas
+        casas = Casa.query.all()
+        for casa in casas:
+            casa.saldo_total += valor
+        
+        db.session.commit()
+        print(f"✅ Cobro automático ejecutado: ${valor} cargados a {len(casas)} casas.")
+
+# Configurar la tarea para el día 1 de cada mes a las 00:00
+@scheduler.task('cron', id='cobro_mensual', day=1, hour=0, minute=0)
+def ejecutar_cron():
+    tarea_cobro_mensual()
+
+scheduler.init_app(app)
+scheduler.start()
+
+
+@app.route('/admin/casa/<int:id>')
+@login_required
+def detalle_casa(id):
+    casa = Casa.query.get_or_404(id)
+    # Traemos las deudas de esta casa
+    deudas = Deuda.query.filter_by(casa_id=id).all()
+    # Traemos los pagos realizados por esta casa
+    pagos = Pago.query.filter_by(casa_id=id).all()
+    
+    return render_template('admin/detalle_casa.html', 
+                           casa=casa, 
+                           deudas=deudas, 
+                           pagos=pagos)
+
+def registrar_pago_y_saldar_deuda(casa_id, monto_pagado, nota):
+    # 1. Crear el registro del pago para el historial
+    nuevo_pago = Pago(
+        monto=monto_pagado,
+        nota=nota,
+        casa_id=casa_id,
+        fecha=datetime.utcnow()
+    )
+    db.session.add(nuevo_pago)
+
+    # 2. Buscar la deuda más antigua que no esté pagada
+    deuda_pendiente = Deuda.query.filter_by(
+        casa_id=casa_id, 
+        pagado=False
+    ).order_by(Deuda.anio.asc(), Deuda.mes.asc()).first()
+
+    if deuda_pendiente:
+        # 3. Si el monto coincide o es mayor, la marcamos como pagada
+        # (Aquí podrías agregar lógica para abonos parciales si lo necesitas)
+        if monto_pagado >= deuda_pendiente.monto:
+            deuda_pendiente.pagado = True
+            deuda_pendiente.fecha_pago = datetime.utcnow()
+            mensaje = f"Pago registrado y deuda de {deuda_pendiente.nombre_mes()} saldada."
+        else:
+            mensaje = "Pago registrado, pero el monto es insuficiente para saldar la deuda completa."
+    else:
+        mensaje = "Pago registrado. No se encontraron deudas pendientes para esta casa."
+
+    db.session.commit()
+    return mensaje
 
 db.init_app(app)
 login_manager = LoginManager()
@@ -39,6 +110,8 @@ def inject_config():
     # Si existe, lo convertimos a entero para limpiar puntos decimales, si no, uno por defecto
     num_ws = int(conf_ws.valor) if conf_ws else "593900000000"
     return dict(whatsapp_global=num_ws)
+
+
 
 @app.route('/')
 def index():
@@ -77,76 +150,114 @@ def cambiar_password():
 
     return render_template('cambiar_password.html')
 
+@app.route('/confirmar-pago-meses/<int:casa_id>', methods=['POST'])
+@login_required
+def confirmar_pago_meses(casa_id):
+    if current_user.rol != 'admin':
+        return redirect(url_for('inicio'))
+
+    # Obtenemos la lista de deudas marcadas en los checkboxes
+    deuda_ids = request.form.getlist('deuda_ids')
+    metodo = request.form.get('metodo')
+
+    if not deuda_ids:
+        flash("❌ No seleccionaste ningún mes para pagar.", "warning")
+        return redirect(request.referrer)
+
+    try:
+        casa = Casa.query.get_or_404(casa_id)
+        
+        for d_id in deuda_ids:
+            deuda = Deuda.query.get(d_id)
+            if deuda and not deuda.pagado:
+                # 1. Marcamos la deuda como pagada
+                deuda.pagado = True
+                
+                # 2. Creamos el registro del pago para el historial/recibo
+                nuevo_pago = Pago(
+                    monto=deuda.monto,
+                    casa_id=casa.id,
+                    deuda_id=deuda.id,
+                    # concepto=f"Pago mes {deuda.nombre_mes} - {metodo}" # Si tienes campo concepto
+                )
+                db.session.add(nuevo_pago)
+
+        # --- EL PASO MÁGICO QUE TE FALTA ---
+        # Forzamos que la base de datos reconozca los pagos antes de sumar
+        db.session.flush() 
+
+        # Recalculamos el saldo total sumando solo lo que quedó pendiente (IGUAL QUE TU BOTÓN)
+        nuevo_saldo = db.session.query(db.func.sum(Deuda.monto)).filter(
+            Deuda.casa_id == casa.id,
+            Deuda.pagado == False
+        ).scalar() or 0.0
+        
+        casa.saldo_total = float(nuevo_saldo)
+
+        db.session.commit()
+        flash(f"✅ ¡Pago procesado! El saldo de la casa se actualizó automáticamente.", "success")
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error técnico: {str(e)}", "danger")
+
+    return redirect(url_for('detalle_casa', id=casa_id))
+
+import json # Import json at the top of app.py
 
 @app.route('/inicio')
 @login_required
 def inicio():
+    # --- GLOBAL DATA (Always needed) ---
+    ingresos_totales = db.session.query(db.func.sum(Pago.monto)).scalar() or 0.0
+    gastos_totales = db.session.query(db.func.sum(Gasto.monto)).scalar() or 0.0
+    saldo_en_caja = ingresos_totales - gastos_totales
+
+    # --- VIEW FOR ADMIN ---
     if current_user.rol == 'admin':
-        # 1. Obtener mes y año del filtro (por defecto el actual)
-        hoy = datetime.now()
-        mes_filtro = request.args.get('mes', hoy.month, type=int)
-        anio_filtro = request.args.get('anio', hoy.year, type=int)
+        # 1. General Metrics
+        total_casas = Casa.query.count()
+        casas_mora_count = Casa.query.filter(Casa.saldo_total > 0).count()
+        casas_al_dia_count = total_casas - casas_mora_count
+        
+        # 2. DATA FOR DEBTOR CHART (Donut)
+        # We need to send this as a JSON list to JavaScript
+        datos_mora = [casas_al_dia_count, casas_mora_count]
 
-        # 2. Consultas filtradas por mes y año
-        # Ingresos del mes
-        total_ingresos = db.session.query(db.func.sum(Pago.monto)).filter(
-            db.extract('month', Pago.fecha) == mes_filtro,
-            db.extract('year', Pago.fecha) == anio_filtro
-        ).scalar() or 0
-
-        # Gastos del mes
-        total_egresos = db.session.query(db.func.sum(Gasto.monto)).filter(
-            db.extract('month', Gasto.fecha) == mes_filtro,
-            db.extract('year', Gasto.fecha) == anio_filtro
-        ).scalar() or 0
-
-        balance = float(total_ingresos) - float(total_egresos)
-
-        # 3. Gráfica filtrada
-        gastos_query = db.session.query(
+        # 3. DATA FOR EXPENSE CATEGORIES CHART (Pie)
+        # We group expenses by category and sum their amounts
+        gastos_por_categoria = db.session.query(
             Gasto.categoria, db.func.sum(Gasto.monto)
-        ).filter(
-            db.extract('month', Gasto.fecha) == mes_filtro,
-            db.extract('year', Gasto.fecha) == anio_filtro
         ).group_by(Gasto.categoria).all()
 
-        labels = [str(g[0]) if g[0] else "Varios" for g in gastos_query]
-        valores = [float(g[1]) for g in gastos_query]
+        # Prepare labels and data for JavaScript, handling empty categories
+        labels_gastos = []
+        valores_gastos = []
+        for cat, monto in gastos_por_categoria:
+            labels_gastos.append(cat if cat else "Sin Categoría")
+            valores_gastos.append(float(monto))
 
-        # 4. Movimientos del mes (últimos 10 del mes seleccionado)
-        ultimos_pagos = Pago.query.filter(
-            db.extract('month', Pago.fecha) == mes_filtro,
-            db.extract('year', Pago.fecha) == anio_filtro
-        ).order_by(Pago.id.desc()).limit(10).all()
-
-        ultimos_gastos = Gasto.query.filter(
-            db.extract('month', Gasto.fecha) == mes_filtro,
-            db.extract('year', Gasto.fecha) == anio_filtro
-        ).order_by(Gasto.id.desc()).limit(10).all()
-
-        movimientos = []
-        for p in ultimos_pagos:
-            movimientos.append({'fecha': p.fecha, 'tipo': 'PAGO', 'descripcion': f"Casa {p.casa.numero_casa}", 'monto': p.monto})
-        for g in ultimos_gastos:
-            movimientos.append({'fecha': g.fecha, 'tipo': 'GASTO', 'descripcion': g.descripcion, 'monto': g.monto})
+        # 4. Data for other sections (if needed)
+        ultimos_pagos_admin = Pago.query.order_by(Pago.id.desc()).limit(5).all()
         
-        movimientos = sorted(movimientos, key=lambda x: x['fecha'], reverse=True)
-
+        # NOTE: We use json.dumps to safely pass Python lists to JavaScript
         return render_template('admin/inicio_admin.html', 
-                               ingresos=total_ingresos, 
-                               egresos=total_egresos, 
-                               balance=balance,
-                               labels=labels,
-                               valores=valores,
-                               movimientos=movimientos,
-                               mes_actual=mes_filtro,
-                               anio_actual=anio_filtro,
-                               umbral_alerta=50.00, # Tu umbral anterior
-                               current_time=datetime.now())
-    
-    return redirect(url_for('mi_estado'))
+                               saldo_caja=saldo_en_caja,
+                               ingresos=ingresos_totales,
+                               gastos=gastos_totales,
+                               total_casas=total_casas,
+                               casas_mora=casas_mora_count,
+                               # CHART DATA
+                               labels_mora=json.dumps(['Al Día', 'En Mora']),
+                               datos_mora=json.dumps(datos_mora),
+                               labels_gastos=json.dumps(labels_gastos),
+                               datos_gastos=json.dumps(valores_gastos),
+                               pagos_recientes=ultimos_pagos_admin)
 
-from datetime import datetime
+    # --- VIEW FOR HOMEOWNER (Unchanged) ---
+    else:
+        # (Keep the homeowner logic from the previous step here)
+        return render_template('inicio_dueno.html', ...)
 
 @app.route('/admin/configuracion', methods=['GET', 'POST'])
 @login_required
@@ -154,7 +265,9 @@ def configuracion():
     if current_user.rol != 'admin':
         return redirect(url_for('inicio'))
 
-    # Buscamos Alícuota y WhatsApp (o los creamos si no existen)
+    from datetime import datetime # Importante tenerlo aquí o al inicio
+
+    # 1. Buscar o crear configuraciones en la DB
     conf_alicuota = Configuracion.query.filter_by(clave='valor_alicuota').first()
     if not conf_alicuota:
         conf_alicuota = Configuracion(clave='valor_alicuota', valor=5.0)
@@ -162,12 +275,12 @@ def configuracion():
 
     conf_whatsapp = Configuracion.query.filter_by(clave='whatsapp_admin').first()
     if not conf_whatsapp:
-        # Pon tu número por defecto aquí (sin el +)
         conf_whatsapp = Configuracion(clave='whatsapp_admin', valor=593900000000) 
         db.session.add(conf_whatsapp)
     
     db.session.commit()
 
+    # 2. Procesar cambios de valores si es POST
     if request.method == 'POST':
         nuevo_valor_ali = request.form.get('valor_alicuota')
         nuevo_ws = request.form.get('whatsapp_admin')
@@ -178,52 +291,50 @@ def configuracion():
             conf_whatsapp.valor = float(nuevo_ws)
             
         db.session.commit()
-        flash("✅ Configuración actualizada con éxito")
+        flash("✅ Configuración actualizada con éxito", "success")
         return redirect(url_for('configuracion'))
 
+    # 3. Lógica de meses dinámicos para el formulario de alícuotas
+    anio_actual = datetime.now().year
+    meses_nombres = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+                     "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+    
+    opciones_meses = []
+    for anio in [anio_actual, anio_actual + 1]:
+        for mes in meses_nombres:
+            opciones_meses.append(f"{mes} {anio}")
+
+    # 4. Enviamos todo al HTML
     return render_template('admin/configuracion.html', 
                            alicuota=conf_alicuota.valor, 
-                           whatsapp=int(conf_whatsapp.valor))
+                           whatsapp=int(conf_whatsapp.valor),
+                           opciones_meses=opciones_meses)
 
-@app.route('/admin/generar-alicuotas-mes', methods=['POST'])
-@login_required
-def generar_alicuotas():
-    if current_user.rol != 'admin':
-        return redirect(url_for('inicio'))
-
-    hoy = datetime.now()
-    mes_actual = hoy.month
-    anio_actual = hoy.year
-
-    # 1. Verificar si ya se generó este mes
-    ya_existe = RegistroCarga.query.filter_by(mes=mes_actual, anio=anio_actual).first()
-
-    if ya_existe:
-        flash(f"⚠️ ¡Atención! Ya se generaron las alícuotas para {mes_actual}/{anio_actual} el día {ya_existe.fecha_ejecucion.strftime('%d/%m')}.")
-        return redirect(url_for('pagos_globales'))
-
-    try:
-        # 2. Si no existe, procedemos a cargar la deuda
-        conf = Configuracion.query.filter_by(clave='valor_alicuota').first()
-        VALOR_A_COBRAR = conf.valor if conf else 5.0 # Fallback por si acaso
-        todas_las_casas = Casa.query.all()
+def generar_deudas_mensuales(mes, anio, monto_alicuota):
+    """
+    Crea un registro de deuda para cada casa que no tenga 
+    una deuda registrada para el mes y año proporcionados.
+    """
+    casas = Casa.query.all()
+    contador = 0
+    
+    for casa in casas:
+        # Verificar si ya existe la deuda para evitar duplicados (por el UniqueConstraint)
+        existe = Deuda.query.filter_by(casa_id=casa.id, mes=mes, anio=anio).first()
         
-        for casa in todas_las_casas:
-            deuda_actual = casa.deuda_2025 or 0.0
-            casa.deuda_2025 = deuda_actual + VALOR_A_COBRAR
-        
-        # 3. Guardamos el registro de que ya se hizo este mes
-        nuevo_registro = RegistroCarga(mes=mes_actual, anio=anio_actual)
-        db.session.add(nuevo_registro)
-        
-        db.session.commit()
-        flash(f"🚀 Éxito: Se cargaron ${VALOR_A_COBRAR} a todas las casas para el mes {mes_actual}.")
-        
-    except Exception as e:
-        db.session.rollback()
-        flash(f"❌ Error crítico: {str(e)}")
-
-    return redirect(url_for('pagos_globales'))
+        if not existe:
+            nueva_deuda = Deuda(
+                casa_id=casa.id,
+                mes=mes,
+                anio=anio,
+                monto=monto_alicuota,
+                pagado=False
+            )
+            db.session.add(nueva_deuda)
+            contador += 1
+    
+    db.session.commit()
+    print(f"Se generaron {contador} registros de deuda para el periodo {mes}/{anio}.")
 
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -253,85 +364,223 @@ def logout():
     return redirect(url_for('login'))
 
 
-# RUTA DE REGISTRO DE PAGOS (SOLO ADMIN)
 @app.route('/admin/registrar-pago', methods=['GET', 'POST'])
 @login_required
 def registrar_pago():
-    # 1. Seguridad: Solo el admin puede entrar aquí
     if current_user.rol != 'admin':
-        flash("No tienes permiso para realizar esta acción.")
         return redirect(url_for('inicio'))
 
     if request.method == 'POST':
-        c_id = request.form.get('casa_id')
-        m_valor = request.form.get('monto')
-        c_concepto = request.form.get('concepto')
-
-        # Verificamos que los datos no estén vacíos
-        if not c_id or not m_valor:
-            flash("Error: Seleccione una casa y un monto válido.")
-            return redirect(url_for('registrar_pago'))
-
         try:
-            monto_float = float(m_valor)
-            casa_id_int = int(c_id)
+            # 1. Obtener datos y asegurar que son números
+            c_id = int(request.form.get('casa_id'))
+            monto_pago = float(request.form.get('monto'))
             
-            # 2. BUSCAMOS LA CASA PARA ACTUALIZAR SU DEUDA
-            casa_seleccionada = Casa.query.get(casa_id_int)
+            casa = Casa.query.get(c_id)
+            if not casa:
+                flash("Casa no encontrada", "danger")
+                return redirect(url_for('registrar_pago'))
+
+            # 2. CREAR EL REGISTRO DE PAGO PRIMERO
+            nuevo_pago = Pago(monto=monto_pago, casa_id=casa.id)
+            db.session.add(nuevo_pago)
+
+            # 3. LÓGICA DE ACTUALIZACIÓN DE DEUDAS (IGUAL QUE EL BOTÓN)
+            # Buscamos todas las deudas NO pagadas de esta casa
+            deudas_pendientes = Deuda.query.filter_by(casa_id=casa.id, pagado=False)\
+                                           .order_by(Deuda.anio.asc(), Deuda.mes.asc()).all()
+
+            saldo_disponible = monto_pago
+            for deuda in deudas_pendientes:
+                # Usamos un margen de 0.01 para evitar errores de centavos en la DB
+                if saldo_disponible >= (deuda.monto - 0.01):
+                    deuda.pagado = True
+                    saldo_disponible -= deuda.monto
+                else:
+                    break
+
+            # 4. FORZAR EL RECALCULO DEL SALDO (Copiado de tu función 'recalcular_saldos')
+            db.session.flush() # Sincroniza los estados de 'pagado=True' antes de sumar
             
-            if casa_seleccionada:
-                # REGLA CONTABLE: Deuda Actual - Pago Realizado = Nueva Deuda
-                # Ejemplo: Debe 5 y paga 5 -> 5 - 5 = 0 (Al día)
-                # Ejemplo: Debe 0 y paga 5 -> 0 - 5 = -5 (Saldo a favor)
-                casa_seleccionada.deuda_2025 -= monto_float
+            total_pendiente = db.session.query(db.func.sum(Deuda.monto)).filter(
+                Deuda.casa_id == casa.id,
+                Deuda.pagado == False
+            ).scalar() or 0.0
+            
+            casa.saldo_total = float(total_pendiente)
 
-                # 3. CREAMOS EL REGISTRO DEL PAGO EN EL HISTORIAL
-                nuevo_pago = Pago(
-                    monto=monto_float, 
-                    concepto=c_concepto, 
-                    casa_id=casa_id_int
-                )
-                
-                db.session.add(nuevo_pago)
-                db.session.commit()
-                flash(f"¡Pago de ${monto_float} registrado a la Casa {casa_seleccionada.numero_casa}!")
-            else:
-                flash("Error: La casa seleccionada no existe.")
-
+            # 5. GUARDAR TODO
+            db.session.commit()
+            flash(f"✅ ¡Sincronizado! Pago de ${monto_pago} aplicado correctamente.", "success")
+            
         except Exception as e:
             db.session.rollback()
-            flash(f"Error técnico al procesar el pago: {str(e)}")
+            flash(f"Error: {str(e)}", "danger")
         
         return redirect(url_for('pagos_globales'))
 
-    # 4. PREPARAR DATOS PARA LA VISTA (GET)
-    # Listamos todas las casas para el menú desplegable
+    # Lógica para mostrar la página (GET)
     casas = Casa.query.order_by(Casa.numero_casa.asc()).all()
-    # Traemos los últimos 10 pagos para la tabla de la derecha
     pagos_recientes = Pago.query.order_by(Pago.id.desc()).limit(10).all()
-    
-    return render_template('/admin/registrar_pago.html', 
-                           casas=casas, 
-                           pagos_recientes=pagos_recientes)
+    return render_template('admin/registrar_pago.html', casas=casas, pagos_recientes=pagos_recientes)
 
 
-
-
-
-@app.route('/admin/descargar-recibo/<int:pago_id>')
+@app.route('/admin/descargar-reporte-deudas')
 @login_required
-def descargar_recibo(pago_id):
-    pago = db.session.get(Pago, pago_id)
-    casa = db.session.get(Casa, pago.casa_id)
+def descargar_reporte_deudas():
+    if current_user.rol != 'admin':
+        return redirect(url_for('inicio'))
+
+    # 1. Obtener todas las casas
+    casas = Casa.query.order_by(Casa.numero_casa).all()
+
+    # 2. Crear una lista de diccionarios con los datos
+    datos = []
+    for c in casas:
+        datos.append({
+            "Número de Casa": c.numero_casa,
+            "Propietario": c.dueno_nombre,
+            "Deuda Pendiente ($)": c.saldo_total,
+            "Estado": "Al día" if c.saldo_total <= 0 else "Con Deuda"
+        })
+
+    # 3. Convertir a DataFrame de Pandas
+    df = pd.DataFrame(datos)
+
+    # 4. Guardar el Excel en memoria (sin crear archivos físicos en el servidor)
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Reporte Deudas')
     
-    pdf_buffer = generar_recibo_pdf(pago, casa)
-    
+    output.seek(0)
+
+    # 5. Enviar el archivo al usuario
     return send_file(
-        pdf_buffer,
+        output,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         as_attachment=True,
-        download_name=f"Recibo_Casa_{casa.numero_casa}.pdf",
-        mimetype='application/pdf'
+        download_name="Reporte_Deudas_SISE.xlsx"
     )
+
+
+@app.route('/admin/iniciar-nuevo-anio', methods=['POST'])
+@login_required
+def iniciar_nuevo_anio():
+    from datetime import datetime
+    anio_nuevo = datetime.now().year
+    
+    # En este caso, como quieres mantener el saldo acumulado, 
+    # NO reseteamos casa.saldo_total a cero.
+    # Solo registramos en el log o enviamos el mensaje de éxito.
+    
+    try:
+        # Aquí podrías opcionalmente crear una nota en el historial 
+        # indicando que se inició el ciclo fiscal {anio_nuevo}
+        db.session.commit()
+        flash(f"✅ Ciclo {anio_nuevo} iniciado. Los saldos pendientes se han mantenido para el cobro actual.", "success")
+    except Exception as e:
+        flash(f"Error al procesar: {str(e)}", "danger")
+        
+    return redirect(url_for('vista_reportes'))
+
+
+@app.route('/admin/recibo/<int:pago_id>')
+@login_required
+def generar_recibo(pago_id):
+    pago = Pago.query.get_or_404(pago_id)
+    casa = Casa.query.get(pago.casa_id)
+    
+    # Cálculo del saldo pendiente
+    saldo_pendiente = db.session.query(db.func.sum(Deuda.monto)).filter(
+        Deuda.casa_id == casa.id,
+        Deuda.pagado == False
+    ).scalar() or 0.0
+
+    buffer = io.BytesIO()
+    p = canvas.Canvas(buffer, pagesize=A4)
+    
+    # Definimos la función interna con coordenadas bajitas (0 a 140mm)
+    def dibujar_recibo(c, tipo_copia):
+        # 1. Logo (Esquina superior izquierda del bloque)
+        logo_path = os.path.join(app.root_path, 'static', 'img', 'logoEsperanza.png')
+        if os.path.exists(logo_path):
+            c.drawImage(logo_path, 15*mm, 115*mm, width=20*mm, height=20*mm, preserveAspectRatio=True)
+
+        # 2. Encabezado
+        c.setFont("Helvetica-Bold", 14)
+        c.setFillColor(colors.darkblue)
+        c.drawString(40*mm, 125*mm, "SISEsperanza")
+        
+        c.setFont("Helvetica-Bold", 9)
+        c.setFillColor(colors.grey)
+        c.drawRightString(195*mm, 125*mm, tipo_copia)
+
+        # 3. Datos del Recibo
+        c.setFillColor(colors.black)
+        c.setFont("Helvetica-Bold", 10)
+        c.drawString(15*mm, 105*mm, f"RECIBO N°: {pago.id:06d}")
+        c.drawRightString(195*mm, 105*mm, f"FECHA: {pago.fecha.strftime('%d/%m/%Y')}")
+
+        # 4. Cuadro del Socio
+        c.setStrokeColor(colors.black)
+        c.setLineWidth(0.5)
+        c.rect(15*mm, 85*mm, 180*mm, 15*mm, stroke=1, fill=0)
+        
+        c.setFont("Helvetica", 9)
+        c.drawString(18*mm, 95*mm, f"PROPIETARIO: {casa.dueno_nombre}")
+        c.drawString(18*mm, 88*mm, f"CASA / VILLA: {casa.numero_casa}")
+
+        # 5. Concepto y Pago
+        c.setFont("Helvetica-Bold", 10)
+        c.drawString(15*mm, 75*mm, "CONCEPTO: Pago de alícuota mensual")
+
+        # Cuadro de TOTAL
+        c.setFillColor(colors.black)
+        c.rect(145*mm, 68*mm, 50*mm, 10*mm, fill=1)
+        c.setFillColor(colors.white)
+        c.setFont("Helvetica-Bold", 11)
+        c.drawString(148*mm, 71*mm, "PAGADO:")
+        c.drawRightString(192*mm, 71*mm, f"${'{:,.2f}'.format(pago.monto)}")
+
+        # 6. Saldo Pendiente (LO QUE PEDISTE)
+        c.setFillColor(colors.black)
+        if saldo_pendiente > 0:
+            c.setFont("Helvetica-Bold", 10)
+            c.drawString(15*mm, 60*mm, f"SALDO PENDIENTE: ${'{:,.2f}'.format(saldo_pendiente)}")
+        else:
+            c.setFont("Helvetica-Bold", 10)
+            c.drawString(15*mm, 60*mm, "ESTADO DE CUENTA: AL DÍA")
+
+        # 7. Firma
+        c.setFillColor(colors.black)
+        c.line(70*mm, 25*mm, 140*mm, 25*mm)
+        c.setFont("Helvetica-Oblique", 8)
+        c.drawCentredString(105*mm, 20*mm, "Firma Autorizada")
+
+    # --- DIBUJO EN LA HOJA A4 ---
+
+    # Primero el de arriba (Original)
+    p.saveState()
+    p.translate(0, 148.5*mm) # Subimos a la mitad superior
+    dibujar_recibo(p, "ORIGINAL - SOCIO")
+    p.restoreState()
+
+    # Línea de corte
+    p.setDash([3, 6])
+    p.setStrokeColor(colors.grey)
+    p.line(0, 148.5*mm, 210*mm, 148.5*mm)
+    p.setDash([])
+
+    # Segundo el de abajo (Copia)
+    p.saveState()
+    # No necesitamos translate aquí porque el 0,0 es el fondo de la hoja
+    dibujar_recibo(p, "COPIA - ADMINISTRACIÓN")
+    p.restoreState()
+
+    p.showPage()
+    p.save()
+    buffer.seek(0)
+    return send_file(buffer, as_attachment=True, download_name=f"Recibo_{pago.id}.pdf", mimetype='application/pdf')
 
 
 def generar_recibo_pdf(pago, casa):
@@ -371,71 +620,89 @@ def generar_recibo_pdf(pago, casa):
 @login_required
 def registrar_casa():
     if request.method == 'POST':
-        # ... (tu código actual de guardado se mantiene igual) ...
+        # ... (aquí va tu lógica de guardado que ya definimos antes) ...
         num = request.form.get('numero_casa')
         nombre = request.form.get('propietario')
-        deuda = request.form.get('deuda_inicial')
-        u_id = request.form.get('usuario_id')
-
-        nueva_casa = Casa(
-            numero_casa=num,
-            dueno_nombre=nombre,
-            deuda_2025=float(deuda) if deuda else 0.0,
-            usuario_id=int(u_id) if u_id and u_id != "" else None
-        )
+        deuda = request.form.get('deuda_inicial') or 0
         
-        try:
-            db.session.add(nueva_casa)
-            db.session.commit()
-            flash(f"✅ Casa {num} guardada con éxito.")
-            return redirect(url_for('lista_casas'))
-        except Exception as e:
-            db.session.rollback()
-            flash(f"❌ Error al guardar: {str(e)}")
-            return redirect(url_for('registrar_casa'))
-
-    # --- AQUÍ ESTÁ EL CAMBIO FILTRADO ---
-    # Buscamos solo usuarios con rol 'propietario' que NO estén en la tabla Casa
-    usuarios_ocupados = db.session.query(Casa.usuario_id).filter(Casa.usuario_id != None)
-    propietarios_libres = Usuario.query.filter(
-        Usuario.rol == 'propietario',
-        Usuario.id.not_in(usuarios_ocupados)
-    ).all()
-
-    return render_template('admin/registrar_casa.html', usuarios=propietarios_libres)
-
+        nueva = Casa(numero_casa=num, dueno_nombre=nombre, saldo_total=float(deuda))
+        db.session.add(nueva)
+        db.session.commit()
+        flash("Casa creada con éxito", "success")
+        return redirect(url_for('lista_casas'))
+    
+    return render_template('admin/registrar_casa.html')
 
 @app.route('/admin/generar-mensualidad', methods=['POST'])
 @login_required
-def generar_mensualidad():
-    if current_user.rol != 'admin':
-        return redirect(url_for('inicio'))
+def generar_alicuotas(): 
+    meses_map = {
+        "Enero": 1, "Febrero": 2, "Marzo": 3, "Abril": 4, 
+        "Mayo": 5, "Junio": 6, "Julio": 7, "Agosto": 8, 
+        "Septiembre": 9, "Octubre": 10, "Noviembre": 11, "Diciembre": 12
+    }
 
-    # Valor fijo de la cuota mensual
-    CUOTA_FIJA = 5.00
+    seleccion = request.form.get('mes')
     
-    # Obtenemos el nombre del mes actual para el mensaje de confirmación
-    meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", 
-             "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
-    mes_actual = meses[datetime.now().month - 1]
+    # OPCIONAL PERO RECOMENDADO: Traer el monto desde la base de datos
+    conf = Configuracion.query.filter_by(clave='valor_alicuota').first()
+    monto_cuota = conf.valor if conf else 20.0
+    
+    if not seleccion:
+        flash("Seleccione un mes válido.", "danger")
+        return redirect(url_for('configuracion'))
 
     try:
-        casas = Casa.query.all()
-        if not casas:
-            flash("No hay casas registradas.")
-            return redirect(url_for('lista_casas'))
+        nombre_mes, anio_valor = seleccion.split()
+        mes_numero = meses_map[nombre_mes]
+        anio_numero = int(anio_valor)
+    except:
+        flash("Error en el formato del mes.", "danger")
+        return redirect(url_for('configuracion'))
 
-        for casa in casas:
-            # Sumamos los 5 dólares a la deuda actual
-            casa.deuda_2025 += CUOTA_FIJA
+    # Candado para no duplicar deudas del mismo mes
+    existe = Deuda.query.filter_by(mes=mes_numero, anio=anio_numero).first()
+    if existe:
+        flash(f"⚠️ Las alícuotas para {seleccion} ya existen.", "warning")
+        return redirect(url_for('configuracion'))
+
+    casas = Casa.query.all()
+    for casa in casas:
+        nueva_deuda = Deuda(
+            monto=monto_cuota,
+            mes=mes_numero,
+            anio=anio_numero,
+            pagado=False,
+            casa_id=casa.id
+        )
+        db.session.add(nueva_deuda)
         
-        db.session.commit()
-        flash(f"✅ Se han cargado ${CUOTA_FIJA:.2f} a todas las casas (Mes: {mes_actual})")
-    except Exception as e:
-        db.session.rollback()
-        flash(f"Error al generar mensualidad: {str(e)}")
+        if casa.saldo_total is None:
+            casa.saldo_total = 0.0
+        casa.saldo_total += monto_cuota
 
-    return redirect(url_for('lista_casas'))
+    db.session.commit()
+    flash(f"✅ Alícuotas de {seleccion} generadas por ${monto_cuota}", "success")
+    return redirect(url_for('configuracion'))
+
+@app.route('/admin/buscar-pagos')
+@login_required
+def buscar_pagos():
+    query = request.args.get('q', '')
+    
+    # Usamos db.session.query para traer AMBOS objetos (Deuda y Casa)
+    if query:
+        resultados = db.session.query(Deuda, Casa).join(Casa).filter(
+            Deuda.pagado == True,
+            db.or_(
+                Casa.dueno_nombre.ilike(f'%{query}%'),
+                Casa.numero_casa.ilike(f'%{query}%')
+            )
+        ).all()
+    else:
+        resultados = db.session.query(Deuda, Casa).join(Casa).filter(Deuda.pagado == True).limit(20).all()
+    
+    return render_template('admin/buscar_pagos.html', resultados=resultados, query=query)
 
 @app.route('/admin/crear-dueno', methods=['GET', 'POST'])
 @login_required
@@ -446,7 +713,7 @@ def crear_dueno():
     if request.method == 'POST':
         numero_casa = request.form.get('numero_casa')
         nombre_dueno = request.form.get('nombre')
-        deuda_inicial = request.form.get('deuda_2025', 0)
+        deuda_inicial = request.form.get('saldo_total', 0)
         username = request.form.get('username')
         password = request.form.get('password')
 
@@ -454,7 +721,7 @@ def crear_dueno():
         nueva_casa = Casa(
             numero_casa=numero_casa, 
             dueno_nombre=nombre_dueno, 
-            deuda_2025=float(deuda_inicial)
+            saldo_total=float(deuda_inicial)
         )
         db.session.add(nueva_casa)
         db.session.flush() # Esto genera el ID de la casa antes de guardar
@@ -474,14 +741,13 @@ def crear_dueno():
 
     return render_template('admin/crear_dueno.html')
 
-@app.route('/admin/casas')
+@app.route('/casas')
 @login_required
 def lista_casas():
-    if current_user.rol != 'admin':
-        return redirect(url_for('inicio'))
-    # Cambiamos Casa.numero por Casa.numero_casa
-    todas_las_casas = Casa.query.order_by(Casa.numero_casa).all()
-    return render_template('/admin/casas.html', casas=todas_las_casas)
+    # Buscamos todas las casas
+    todas_las_casas = Casa.query.order_by(Casa.numero_casa.asc()).all()
+    # IMPORTANTE: Apuntar a la subcarpeta 'admin/'
+    return render_template('admin/lista_casas.html', casas=todas_las_casas)
 
 
 
@@ -499,57 +765,17 @@ def lista_propietarios():
     return render_template('propietarios.html', propietarios=lista_users)
  
 
-@app.route('/admin/reportes')
-@login_required
-def reportes():
-    if current_user.rol != 'admin':
-        return redirect(url_for('inicio'))
 
-    # Usamos float() para convertir el resultado de la base de datos
-    # El 'or 0' es vital por si la tabla está vacía
-    ingresos_db = db.session.query(func.sum(Pago.monto)).scalar()
-    total_ingresos = float(ingresos_db) if ingresos_db else 0.0
-
-    gastos_db = db.session.query(func.sum(Gasto.monto)).scalar()
-    total_gastos = float(gastos_db) if gastos_db else 0.0
-
-    deuda_db = db.session.query(func.sum(Casa.deuda_2025)).scalar()
-    deuda_total_vecinos = float(deuda_db) if deuda_db else 0.0
-
-    # Ahora sí, float - float = ¡Éxito!
-    saldo_actual = total_ingresos - total_gastos
-
-    return render_template('admin/reportes.html', 
-                           ingresos=total_ingresos, 
-                           gastos=total_gastos, 
-                           saldo=saldo_actual,
-                           deuda_pendiente=deuda_total_vecinos)
-
-@app.route('/admin/reporte-morosos')
+@app.route('/admin/reportes/morosos')
 @login_required
 def reporte_morosos():
-    if current_user.rol != 'admin':
-        return redirect(url_for('ver_estado_cuenta'))
-
-    casas = Casa.query.all()
-    reporte = []
-
-    for casa in casas:
-        # Sumamos todos los pagos de esta casa
-        total_pagado = sum(pago.monto for pago in casa.pagos)
-        saldo_pendiente = float(casa.deuda_2025 or 0) - float(total_pagado or 0)
-        
-        # Solo lo agregamos si queremos ver a todos, 
-        # o puedes filtrar solo los que tienen saldo > 0
-        reporte.append({
-            'numero': casa.numero_casa,
-            'propietario': casa.dueno_nombre,
-            'total_deuda': casa.deuda_2025,
-            'pagado': total_pagado,
-            'saldo': saldo_pendiente
-        })
-
-    return render_template('admin/reporte_morosos.html', reporte=reporte)
+    # Buscamos solo casas que tengan deudas pendientes
+    morosos = Casa.query.join(Deuda).filter(Deuda.pagado == False).distinct().all()
+    
+    # Suma total de lo que deben todos los morosos
+    total_deuda = db.session.query(db.func.sum(Deuda.monto)).filter(Deuda.pagado == False).scalar() or 0
+    
+    return render_template('admin/reporte_morosos.html', casas=morosos, total_deuda=total_deuda)
 
 @app.route('/admin/registrar-usuario', methods=['GET', 'POST'])
 @login_required
@@ -581,7 +807,7 @@ def registrar_usuario():
                 casa.usuario_id = nuevo_usuario.id
                 # IMPORTANTE: Sincronizamos el nombre para que no se borre
                 casa.dueno_nombre = username 
-                # NO tocamos casa.deuda_2025, así se mantiene la que ya tenía
+                # NO tocamos casa.saldo_total, así se mantiene la que ya tenía
         
         db.session.commit()
         flash("✅ Propietario creado y vinculado correctamente.")
@@ -618,9 +844,6 @@ def registrar_gasto():
     total_gastos = sum(g.monto for g in gastos)
     return render_template('admin/registrar_gasto.html', gastos=gastos, total_gastos=total_gastos)
 
-from fpdf import FPDF
-from flask import send_file
-import os
 
 @app.route('/admin/descargar-pdf-gastos')
 @login_required
@@ -649,7 +872,7 @@ def descargar_pdf_gastos():
                      "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
     nombre_mes = meses_nombres[mes_filtro - 1]
 
-    pdf.cell(190, 10, "SISTEMA SISE ESPERANZA", ln=True, align='C')
+    pdf.cell(190, 10, "SISTEMA SISESPERANZA", ln=True, align='C')
     pdf.set_font("Arial", '', 12)
     pdf.cell(190, 10, f"Informe de Gastos: {nombre_mes} {anio_filtro}", ln=True, align='C')
     pdf.ln(10)
@@ -722,7 +945,7 @@ def descargar_mi_estado_pdf():
     # Encabezado con Estilo
     pdf.set_font("Arial", 'B', 16)
     pdf.set_text_color(30, 41, 59)
-    pdf.cell(190, 10, "ESTADO DE CUENTA - SISE ESPERANZA", ln=True, align='C')
+    pdf.cell(190, 10, "ESTADO DE CUENTA - SISEsperanza", ln=True, align='C')
     
     pdf.set_font("Arial", '', 10)
     pdf.set_text_color(100, 116, 139)
@@ -735,7 +958,7 @@ def descargar_mi_estado_pdf():
     pdf.set_text_color(0, 0, 0)
     pdf.cell(190, 10, f" PROPIETARIO: {casa.dueno_nombre}", 1, 1, 'L', True)
     pdf.cell(95, 10, f" CASA N°: {casa.numero_casa}", 1, 0, 'L')
-    pdf.cell(95, 10, f" DEUDA ACTUAL: ${casa.deuda_2025:,.2f}", 1, 1, 'L')
+    pdf.cell(95, 10, f" DEUDA ACTUAL: ${casa.saldo_total:,.2f}", 1, 1, 'L')
     pdf.ln(10)
 
     # Tabla de Pagos Realizados
@@ -783,73 +1006,42 @@ def pagos_globales():
                            total=total_recaudado,
                            current_time=datetime.now())
 
-@app.route('/admin/editar-casa/<int:id>', methods=['GET', 'POST'])
-@login_required
+@app.route('/editar_casa/<int:id>', methods=['GET', 'POST'])
 def editar_casa(id):
+    # 1. Buscar la casa por ID o lanzar error 404 si no existe
     casa = Casa.query.get_or_404(id)
     
     if request.method == 'POST':
-        casa.numero_casa = request.form.get('numero_casa')
-        casa.dueno_nombre = request.form.get('dueno_nombre')
+        # 2. Capturar los datos del formulario
+        casa.direccion = request.form['direccion']
+        casa.propietario = request.form['propietario']
         
-        nueva_deuda = request.form.get('deuda_2025')
-        if nueva_deuda is not None:
-            casa.deuda_2025 = float(nueva_deuda)
-        
-        u_id = request.form.get('usuario_id')
-        casa.usuario_id = int(u_id) if u_id and u_id != "" else None
-        
-        db.session.commit()
-        flash(f"🏠 Casa {casa.numero_casa} actualizada correctamente")
-        return redirect(url_for('lista_casas'))
-
-    # --- LÓGICA DE FILTRADO PARA EL GET ---
-    
-    # 1. Obtenemos los IDs de todos los usuarios que ya tienen una casa...
-    # ... PERO excluimos de esa lista negra al usuario que ya tiene ESTA casa.
-    usuarios_ocupados_ids = db.session.query(Casa.usuario_id).filter(
-        Casa.usuario_id != None, 
-        Casa.usuario_id != casa.usuario_id
-    ).all()
-    
-    # Convertimos la lista de tuplas a una lista simple de IDs
-    lista_negra = [id[0] for id in usuarios_ocupados_ids]
-
-    # 2. Filtramos los propietarios: que tengan el rol y que NO estén en la lista negra
-    propietarios_disponibles = Usuario.query.filter(
-        Usuario.rol == 'propietario',
-        Usuario.id.not_in(lista_negra) if lista_negra else True
-    ).all()
-
-    return render_template('admin/editar_casa.html', 
-                           casa=casa, 
-                           usuarios=propietarios_disponibles)
-
-
-@app.route('/admin/eliminar-casa/<int:id>', methods=['POST'])
-@login_required
-def eliminar_casa(id):
-    if current_user.rol != 'admin':
-        flash("No tienes permiso para realizar esta acción.")
-        return redirect(url_for('inicio'))
-
-    # Usamos el método moderno db.session.get
-    casa = db.session.get(Casa, id)
-    
-    if casa:
         try:
-            # Importante: Si la casa tiene pagos asociados, SQLAlchemy 
-            # los manejará según cómo definiste la relación (backref).
-            db.session.delete(casa)
+            # 3. Guardar cambios
             db.session.commit()
-            flash(f"La Casa {casa.numero_casa} ha sido eliminada.")
-        except Exception as e:
-            db.session.rollback()
-            flash(f"Error al eliminar: {str(e)}")
-    else:
-        flash("La casa no existe.")
+            flash("Casa actualizada exitosamente")
+            return redirect(url_for('vista_casas'))
+        except:
+            return "Hubo un error al editar la casa."
+            
+    # Si es GET, mostrar el formulario con los datos actuales
+    return render_template('/admin/editar_casa.html', casa=casa)
 
+@app.route('/eliminar_casa/<int:id>', methods=['POST'])
+def eliminar_casa(id):
+    # 1. Buscar la casa
+    casa = Casa.query.get_or_404(id)
+    
+    try:
+        # 2. Eliminar de la sesión y confirmar
+        db.session.delete(casa)
+        db.session.commit()
+        flash("Casa eliminada correctamente")
+    except:
+        flash("No se pudo eliminar la casa")
+        
     return redirect(url_for('lista_casas'))
+
 
 @app.route('/admin/eliminar-propietario/<int:id>')
 @login_required
@@ -868,17 +1060,85 @@ def eliminar_propietario(id):
     return redirect(url_for('lista_propietarios'))
 
 
-@app.route('/mi-estado')
+@app.route('/inicio_admin') # Asegúrate de que el nombre coincida con tus plantillas
 @login_required
-def mi_estado():
-    # Buscamos la casa vinculada directamente al ID del usuario logueado
-    casa = Casa.query.filter_by(usuario_id=current_user.id).first()
+def inicio_admin():
+    if current_user.rol != 'admin':
+        return redirect(url_for('inicio'))
     
-    if not casa:
-        flash("Tu cuenta de usuario aún no tiene una propiedad asignada. Contacta al administrador.")
+    # ... (todo tu código actual de la función inicio) ...
+    # Pero asegúrate de pasar 'casas' para que la tabla de abajo no salga vacía
+    todas_las_casas = Casa.query.order_by(Casa.numero_casa.asc()).all()
+    
+    return render_template('admin/inicio_admin.html', 
+                           casas=todas_las_casas, # <--- IMPORTANTE
+                           ingresos=total_ingresos, 
+                           egresos=total_egresos, 
+                           balance=balance,
+                           movimientos=movimientos)
+
+
+@app.route('/admin/registrar-pago-mes/<int:deuda_id>', methods=['POST'])
+@login_required
+def registrar_pago_mes(deuda_id):
+    deuda = Deuda.query.get_or_404(deuda_id)
+    casa = Casa.query.get(deuda.casa_id) # Obtenemos la casa para actualizar su saldo
+    
+    if not deuda.pagado:
+        # 1. Marcar la mensualidad como pagada
+        deuda.pagado = True
+        deuda.fecha_pago = datetime.now()
+        
+        # 2. RESTAR de la deuda global de la casa (AQUÍ ESTABA EL FALLO)
+        # Restamos el monto de la deuda actual de la casa
+        casa.saldo_total = float(casa.saldo_total) - float(deuda.monto)
+        
+        # 3. Crear el registro del movimiento (Ingreso)
+        nuevo_pago = Pago(
+            monto=deuda.monto,
+            casa_id=deuda.casa_id,
+            deuda_id=deuda.id,
+            fecha=datetime.now()
+            # nota="Pago de mensualidad" (Usa el nombre de columna que definimos antes)
+        )
+        
+        try:
+            db.session.add(nuevo_pago)
+            db.session.commit()
+            flash(f"✅ Pago registrado. Saldo de casa actualizado.", "success")
+        except Exception as e:
+            db.session.rollback()
+            flash(f"❌ Error al procesar: {str(e)}", "danger")
+    else:
+        flash("Esta deuda ya figuraba como pagada.", "warning")
+        
+    return redirect(url_for('detalle_casa', id=deuda.casa_id))
+
+@app.route('/admin/recalcular-saldos')
+@login_required
+def recalcular_saldos():
+    if current_user.rol != 'admin':
         return redirect(url_for('inicio'))
 
-    return render_template('estado_cuenta.html', casa=casa, pagos=casa.pagos)
+    try:
+        casas = Casa.query.all()
+        for casa in casas:
+            # Sumamos todas las deudas pendientes de esta casa
+            total_pendiente = db.session.query(db.func.sum(Deuda.monto)).filter(
+                Deuda.casa_id == casa.id,
+                Deuda.pagado == False
+            ).scalar() or 0.0
+            
+            # Actualizamos el saldo de la casa
+            casa.saldo_total = float(total_pendiente)
+        
+        db.session.commit()
+        flash("✅ ¡Saldos sincronizados! Todos los totales coinciden ahora con las deudas pendientes.", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"❌ Error al sincronizar: {str(e)}", "danger")
+
+    return redirect(url_for('lista_casas'))
 
 @app.route('/mi-cuenta')
 @login_required
@@ -913,6 +1173,55 @@ def reporte_general():
     
     return render_template('admin/reporte.html', total=total_recaudado, casas=casas)
 
+@app.route('/admin/reportes')
+@login_required
+def vista_reportes():
+    if current_user.rol != 'admin':
+        return redirect(url_for('inicio'))
+
+    # --- PASO EXTRA: Sincronizar saldos antes de mostrar el reporte ---
+    casas_db = Casa.query.all()
+    for casa in casas_db:
+        # Sumamos lo que realmente debe en la tabla Deuda
+        total_deuda = db.session.query(db.func.sum(Deuda.monto)).filter(
+            Deuda.casa_id == casa.id,
+            Deuda.pagado == False
+        ).scalar() or 0.0
+        casa.saldo_total = float(total_deuda)
+    
+    db.session.commit() # Guardamos los saldos reales
+    # ---------------------------------------------------------------
+
+    # Ahora sí, pedimos los datos para el reporte
+    ingresos_db = db.session.query(func.sum(Pago.monto)).scalar() or 0.0
+    gastos_db = db.session.query(func.sum(Gasto.monto)).scalar() or 0.0
+    deuda_db = db.session.query(func.sum(Casa.saldo_total)).scalar() or 0.0
+    
+    saldo_en_caja = ingresos_db - gastos_db
+
+    # Traemos las casas que tienen deuda > 0 para la tabla
+    casas_con_mora = Casa.query.filter(Casa.saldo_total > 0).order_by(Casa.numero_casa).all()
+
+    return render_template('admin/reportes.html', 
+                           ingresos=ingresos_db, 
+                           gastos=gastos_db, 
+                           saldo=saldo_en_caja,
+                           deuda_pendiente=deuda_db,
+                           casas_con_deuda=casas_con_mora) # <--- Asegúrate que este nombre coincida con el HTML
+
+# --- SCRIPT DE EMERGENCIA PARA RENOMBRAR ---
+with app.app_context():
+    from sqlalchemy import text
+    try:
+        # 1. Intentamos renombrar la columna físicamente en Postgres
+        db.session.execute(text('ALTER TABLE casas RENAME COLUMN saldo_total TO saldo_total;'))
+        db.session.commit()
+        print("✅ ÉXITO: La columna física en PostgreSQL ahora es 'saldo_total'.")
+    except Exception as e:
+        db.session.rollback()
+        # Si da error aquí, es porque probablemente ya se renombró o el nombre es distinto
+        print(f"⚠️ NOTA: No se pudo renombrar (Quizás ya estaba lista): {e}")
+# -------------------------------------------
 if __name__ == '__main__':
     with app.app_context():
         # Crea las tablas con la estructura limpia

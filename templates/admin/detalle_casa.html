@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+
+{% block content %}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+
+<style>
+    :root {
+        --primary: #3b82f6;
+        --primary-hover: #2563eb;
+        --success: #10b981;
+        --success-hover: #059669;
+        --danger: #f43f5e;
+        --danger-hover: #e11d48;
+        --slate-50: #f8fafc;
+        --slate-100: #f1f5f9;
+        --slate-700: #334155;
+        --slate-800: #1e293b;
+    }
+
+    body {
+        background-color: var(--slate-50);
+        font-family: 'Inter', sans-serif;
+    }
+
+    /* Botón Moderno UI */
+    .btn-modern {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        font-weight: 700;
+        padding: 12px 24px;
+        border-radius: 14px;
+        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        border: none;
+        font-size: 0.95rem;
+        cursor: pointer;
+        text-decoration: none !important;
+    }
+
+    .btn-modern:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.15);
+    }
+
+    .btn-modern:active {
+        transform: translateY(0);
+    }
+
+    .btn-primary-modern { background: var(--primary); color: white; }
+    .btn-primary-modern:hover { background: var(--primary-hover); color: white; }
+
+    .btn-success-modern { background: var(--success); color: white; }
+    .btn-success-modern:hover { background: var(--success-hover); color: white; }
+
+    .btn-danger-modern { background: var(--danger); color: white; }
+    .btn-danger-modern:hover { background: var(--danger-hover); color: white; }
+
+    .btn-outline-modern { 
+        background: white; 
+        border: 2px solid var(--slate-100); 
+        color: var(--slate-700); 
+    }
+    .btn-outline-modern:hover { border-color: var(--primary); color: var(--primary); }
+
+    /* Estilos de Tabla y Cards */
+    .card-custom {
+        background: white;
+        border-radius: 20px;
+        border: none;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    }
+
+    .stat-card {
+        transition: all 0.3s ease;
+        border-radius: 20px;
+    }
+
+    .stat-card:hover {
+        transform: scale(1.02);
+    }
+
+    .table thead th {
+        background: var(--slate-50);
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 0.05em;
+        color: var(--slate-700);
+        padding: 15px;
+        border: none;
+    }
+
+    .badge-modern {
+        padding: 8px 16px;
+        border-radius: 12px;
+        font-weight: 700;
+        font-size: 0.8rem;
+    }
+</style>
+
+<div class="container py-5">
+    
+    <div class="row align-items-center mb-5">
+        <div class="col-lg-6">
+            <a href="{{ url_for('lista_casas') }}" class="text-decoration-none text-muted fw-bold small">
+                <i class="fas fa-arrow-left me-2"></i> REGRESAR AL PANEL
+            </a>
+            <h1 class="display-5 fw-800 text-slate-800 mt-2 mb-0" style="font-weight: 800;">Casa #{{ casa.numero_casa }}</h1>
+            <p class="fs-5 text-muted">Residente: <span class="text-dark fw-bold">{{ casa.dueno_nombre or 'Sin Propietario' }}</span></p>
+        </div>
+        <div class="col-lg-6 d-flex justify-content-lg-end gap-3 mt-3 mt-lg-0 flex-wrap">
+            <a href="https://wa.me/{{ whatsapp_global }}" target="_blank" class="btn-modern btn-success-modern">
+                <i class="fab fa-whatsapp fa-lg"></i> ENVIAR COBRO
+            </a>
+            <a href="{{ url_for('editar_casa', id=casa.id) }}" class="btn-modern btn-primary-modern">
+                <i class="fas fa-edit"></i> EDITAR
+            </a>
+            <form action="{{ url_for('eliminar_casa', id=casa.id) }}" method="POST" onsubmit="return confirm('¿Eliminar esta casa para siempre?')">
+                <button type="submit" class="btn-modern btn-danger-modern" style="padding: 12px 18px;">
+                    <i class="fas fa-trash-alt"></i>ELIMINAR
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-5">
+        <div class="col-md-4">
+            <div class="card-custom p-4 stat-card border-start border-primary border-5">
+                <div class="d-flex align-items-center">
+                    <div class="bg-primary bg-opacity-10 p-3 rounded-circle text-primary me-3">
+                        <i class="fas fa-wallet fa-2x"></i>
+                    </div>
+                    <div>
+                        <small class="text-muted fw-bold d-block">DEUDA ACTUAL</small>
+                        <h2 class="fw-800 mb-0 {% if casa.saldo_total > 0 %}text-danger{% else %}text-success{% endif %}">
+                            ${{ "{:,.2f}".format(casa.saldo_total) }}
+                        </h2>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card-custom p-4 stat-card">
+                <div class="d-flex align-items-center">
+                    <div class="bg-success bg-opacity-10 p-3 rounded-circle text-success me-3">
+                        <i class="fas fa-shield-alt fa-2x"></i>
+                    </div>
+                    <div>
+                        <small class="text-muted fw-bold d-block">ESTADO FISCAL</small>
+                        {% if casa.saldo_total > 0 %}
+                            <span class="badge-modern bg-danger text-white">EN MORA</span>
+                        {% else %}
+                            <span class="badge-modern bg-success text-white">SOLVENTE</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card-custom p-4 stat-card">
+                <div class="d-flex align-items-center">
+                    <div class="bg-info bg-opacity-10 p-3 rounded-circle text-info me-3">
+                        <i class="fas fa-history fa-2x"></i>
+                    </div>
+                    <div>
+                        <small class="text-muted fw-bold d-block">TOTAL MENSUALIDADES</small>
+                        <h2 class="fw-800 mb-0">{{ deudas|length }}</h2>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card-custom overflow-hidden shadow-lg">
+        <div class="p-4 border-bottom d-flex justify-content-between align-items-center bg-white">
+            <h4 class="fw-bold m-0"><i class="fas fa-list-ul me-2 text-primary"></i>Historial de Cobros</h4>
+            <span class="badge bg-light text-dark border fw-bold rounded-pill">Total: {{ deudas|length }} periodos</span>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th class="ps-4">Periodo / Mes</th>
+                        <th>Monto Fijo</th>
+                        <th>Estado de Pago</th>
+                        <th class="text-end pe-4">Gestión</th>
+                    </tr>
+                </thead>
+                <tbody class="border-top-0">
+                    {% for deuda in deudas | sort(attribute='anio', reverse=True) | sort(attribute='mes', reverse=True) %}
+                    <tr>
+                        <td class="ps-4 py-4">
+                            <div class="d-flex align-items-center">
+                                <div class="bg-slate-100 rounded-3 p-2 me-3 text-center" style="width: 50px;">
+                                    <span class="fw-bold text-primary">{{ deuda.anio }}</span>
+                                </div>
+                                <div>
+                                    <span class="fw-bold d-block text-dark fs-5">{{ deuda.nombre_mes }}</span>
+                                    <small class="text-muted">Generado automáticamente</small>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <span class="fw-bold fs-5 text-slate-800">${{ "{:,.2f}".format(deuda.monto) }}</span>
+                        </td>
+                        <td>
+                            {% if deuda.pagado %}
+                                <div class="d-inline-flex align-items-center text-success fw-bold">
+                                    <i class="fas fa-check-circle me-2"></i> LIQUIDADO
+                                </div>
+                            {% else %}
+                                <div class="d-inline-flex align-items-center text-danger fw-bold">
+                                    <i class="fas fa-clock me-2"></i> PENDIENTE
+                                </div>
+                            {% endif %}
+                        </td>
+                        <td class="text-end pe-4">
+                            {% if not deuda.pagado %}
+                                <form action="{{ url_for('confirmar_pago_meses', casa_id=casa.id) }}" method="POST">
+                                    <input type="hidden" name="deuda_ids" value="{{ deuda.id }}">
+                                    <button type="submit" class="btn-modern btn-primary-modern" style="padding: 8px 16px; font-size: 0.8rem; border-radius: 10px;">
+                                        COBRAR AHORA
+                                    </button>
+                                </form>
+                            {% else %}
+                                {% set pago_encontrado = false %}
+                                {% for pago in pagos if pago.deuda_id == deuda.id %}
+                                    <a href="{{ url_for('generar_recibo', pago_id=pago.id) }}" class="btn-modern btn-outline-modern" style="padding: 8px 16px; font-size: 0.8rem; border-radius: 10px;">
+                                        <i class="fas fa-file-pdf text-danger"></i> RECIBO
+                                    </a>
+                                    {% set pago_encontrado = true %}
+                                {% endfor %}
+                                {% if not pago_encontrado %}
+                                    <span class="badge bg-secondary rounded-pill">Saldado manual</span>
+                                {% endif %}
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="4" class="text-center py-5">
+                            <div class="opacity-50 mb-3">
+                                <i class="fas fa-folder-open fa-4x"></i>
+                            </div>
+                            <h5 class="text-muted">No se han generado mensualidades para esta casa</h5>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -48,8 +48,8 @@
                     </td>
 
                     <td style="padding: 20px; background: white; border-top: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; text-align: right;">
-                        {% if casa.deuda_2025 > 0 %}
-                            <div style="color: #ef4444; font-weight: 800; font-size: 1.1rem;">${{ "{:,.2f}".format(casa.deuda_2025) }}</div>
+                        {% if casa.saldo_total> 0 %}
+                            <div style="color: #ef4444; font-weight: 800; font-size: 1.1rem;">${{ "{:,.2f}".format(casa.saldo_total) }}</div>
                             <span style="font-size: 0.7rem; color: #ef4444; background: #fef2f2; padding: 2px 8px; border-radius: 4px; text-transform: uppercase;">Pendiente</span>
                         {% else %}
                             <div style="color: #10b981; font-weight: 800; font-size: 1.1rem;">$0.00</div>

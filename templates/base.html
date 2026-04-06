@@ -1,9 +1,11 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+   
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Control de Pagos - SiSEsperanza</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         /* RESET TOTAL: Quitamos cualquier comportamiento de "centrado" forzado */
         html, body {
@@ -104,7 +106,7 @@
             <span style="font-size: 1.5rem;">🏘️</span>
             <span style="color: white; font-weight: 800; font-size: 1.2rem; letter-spacing: 0.5px;">SiS<span style="color: #3b82f6;">Esperanza</span></span>
         </a>
-
+        
         <div style="display: flex; align-items: center; gap: 10px;">
             {% if current_user.rol == 'admin' %}
                 <a class="nav-link" href="{{ url_for('inicio') }}">🏠 Inicio</a>
@@ -113,7 +115,7 @@
                 <a class="nav-link" href="{{ url_for('pagos_globales') }}">💰 Pagos</a>
                 <a class="nav-link" href="{{ url_for('registrar_gasto') }}">💸 Gastos</a>
                 <a class="nav-link" href="{{ url_for('configuracion') }}" title="Configuración">⚙️</a>
-                <a class="nav-link" href="{{ url_for('reportes') }}">📊 Reportes</a>
+                <a class="nav-link" href="{{ url_for('vista_reportes') }}">📊 Reportes</a>
             {% else %}
                 <a class="nav-link" href="{{ url_for('inicio') }}">📊 Mi Estado</a>
                 <a class="nav-link" href="{{ url_for('cambiar_password') }}">🔑 Seguridad</a>
@@ -131,6 +133,7 @@
             <a href="{{ url_for('logout') }}" style="background: #ef4444; color: white; padding: 7px 14px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 0.85rem; margin-left: 10px; transition: 0.3s;" onmouseover="this.style.background='#dc2626'" onmouseout="this.style.background='#ef4444'">
                 🚪 Salir
             </a>
+            
         </div>
     </div>
 </nav>

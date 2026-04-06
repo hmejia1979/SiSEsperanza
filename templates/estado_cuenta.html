@@ -16,19 +16,19 @@
 
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-bottom: 40px;">
         
-        <div style="background: {{ '#f0fdf4' if casa.deuda_2025 <= 0 else '#fff1f2' }}; padding: 30px; border-radius: 24px; border: 1px solid {{ '#bbf7d0' if casa.deuda_2025 <= 0 else '#fecdd3' }}; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);">
-            <span style="color: {{ '#166534' if casa.deuda_2025 <= 0 else '#9f1239' }}; font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.025em;">
-                {{ 'Saldo a Favor' if casa.deuda_2025 < 0 else ('Pendiente de Pago' if casa.deuda_2025 > 0 else 'Estado de Cuenta') }}
+        <div style="background: {{ '#f0fdf4' if casa.saldo_total <= 0 else '#fff1f2' }}; padding: 30px; border-radius: 24px; border: 1px solid {{ '#bbf7d0' if casa.saldo_total <= 0 else '#fecdd3' }}; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);">
+            <span style="color: {{ '#166534' if casa.saldo_total <= 0 else '#9f1239' }}; font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.025em;">
+                {{ 'Saldo a Favor' if casa.saldo_total < 0 else ('Pendiente de Pago' if casa.saldo_total > 0 else 'Estado de Cuenta') }}
             </span>
-            <h2 style="font-size: 3rem; margin: 10px 0; color: {{ '#15803d' if casa.deuda_2025 <= 0 else '#be123c' }}; font-weight: 800;">
-                {% if casa.deuda_2025 == 0 %}
+            <h2 style="font-size: 3rem; margin: 10px 0; color: {{ '#15803d' if casa.saldo_total <= 0 else '#be123c' }}; font-weight: 800;">
+                {% if casa.saldo_total == 0 %}
                     AL DÍA
                 {% else %}
-                    ${{ "{:,.2f}".format(casa.deuda_2025 | abs) }}
+                    ${{ "{:,.2f}".format(casa.saldo_total | abs) }}
                 {% endif %}
             </h2>
-            <p style="color: {{ '#16a34a' if casa.deuda_2025 <= 0 else '#e11d48' }}; font-size: 0.95rem; font-weight: 500;">
-                {{ '¡Excelente! No tienes deudas.' if casa.deuda_2025 <= 0 else 'Recuerda realizar tu pago a tiempo.' }}
+            <p style="color: {{ '#16a34a' if casa.saldo_total <= 0 else '#e11d48' }}; font-size: 0.95rem; font-weight: 500;">
+                {{ '¡Excelente! No tienes deudas.' if casa.saldo_total <= 0 else 'Recuerda realizar tu pago a tiempo.' }}
             </p>
         </div>
 
