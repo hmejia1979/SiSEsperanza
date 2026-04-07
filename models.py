@@ -1,6 +1,7 @@
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from datetime import datetime
+from flask_mail import Mail, Message
 
 db = SQLAlchemy()
 
@@ -16,6 +17,7 @@ class Usuario(db.Model, UserMixin):
     telefono = db.Column(db.String(20), nullable=True)
     correo = db.Column(db.String(100), nullable=True) # Opcional, pero muy útil
 
+
 class Casa(db.Model):
     __tablename__ = 'casas'
     id = db.Column(db.Integer, primary_key=True)
@@ -26,7 +28,6 @@ class Casa(db.Model):
     usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=True)
     propietario_user = db.relationship('Usuario', backref='casa', uselist=False)
     pagos = db.relationship('Pago', backref='casa', lazy=True, cascade="all, delete-orphan")
-
 
 
 class Gasto(db.Model):

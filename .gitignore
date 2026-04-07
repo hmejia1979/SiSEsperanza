@@ -1,15 +1,19 @@
 # Entorno virtual
 venv/
+ENV/
 .env
 
-# Base de datos (No subir para no sobrescribir datos reales)
+# Base de Datos (opcional, si no quieres subir tus pruebas)
 instance/
 *.db
 
-# Python
+# Archivos temporales de Python
 __pycache__/
-*.pyc
+*.py[cod]
 
-# PDFs generados
-instance/*.pdf
-informe_gastos.pdf
+__pycache__/
+instance/
+.env
+*.db
+venv/
+.vscode/

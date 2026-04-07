@@ -14,7 +14,7 @@ from reportlab.lib.pagesizes import A4, letter
 from reportlab.lib import colors
 from reportlab.lib.units import mm
 from fpdf import FPDF
-
+from flask_mail import Mail, Message
 from models import db, Usuario, Casa, Pago, Gasto, Configuracion, Deuda
 load_dotenv()
 
@@ -23,7 +23,18 @@ app = Flask(__name__, static_folder='static', static_url_path='/static')
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')
 
+# --- CONFIGURACIÓN DE CORREO ELECTRÓNICO ---
+app.config['MAIL_SERVER'] = 'smtp.gmail.com'
+app.config['MAIL_PORT'] = 587
+app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_USERNAME'] = 'hernymejia@gmail.com' # Reemplaza con tu correo
+app.config['MAIL_PASSWORD'] = '' # Reemplaza con tu contraseña de aplicación
+app.config['MAIL_DEFAULT_SENDER'] = ('Aviso Conjunto Esperanza', 'hernymejia@gmail.com')
+
+mail = Mail(app)
+
 scheduler = APScheduler()
+
 
 def tarea_cobro_mensual():
     with app.app_context():
@@ -784,33 +795,41 @@ def registrar_usuario():
         return redirect(url_for('inicio'))
 
     if request.method == 'POST':
+        # 1. Capturar datos del formulario (el name del HTML debe ser 'correo')
         username = request.form.get('username')
         password = request.form.get('password')
         cedula = request.form.get('cedula')
         telefono = request.form.get('telefono')
+        correo_form = request.form.get('correo') 
         casa_id = request.form.get('casa_id') 
 
+        # 2. Crear el nuevo objeto Usuario
         nuevo_usuario = Usuario(
             username=username,
             password=generate_password_hash(password),
             cedula=cedula,
             telefono=telefono,
+            correo=correo_form,  # <--- SE GUARDA AQUÍ
             rol='propietario'
         )
         
         db.session.add(nuevo_usuario)
-        db.session.flush() 
+        db.session.flush() # Genera el ID del usuario antes del commit
 
+        # 3. Vincular con la casa si se seleccionó una
         if casa_id:
             casa = db.session.get(Casa, int(casa_id))
             if casa:
                 casa.usuario_id = nuevo_usuario.id
-                # IMPORTANTE: Sincronizamos el nombre para que no se borre
                 casa.dueno_nombre = username 
-                # NO tocamos casa.saldo_total, así se mantiene la que ya tenía
         
-        db.session.commit()
-        flash("✅ Propietario creado y vinculado correctamente.")
+        try:
+            db.session.commit()
+            flash("✅ Propietario creado y correo guardado correctamente.", "success")
+        except Exception as e:
+            db.session.rollback()
+            flash(f"Error al guardar: {str(e)}", "danger")
+            
         return redirect(url_for('lista_propietarios'))
 
     casas_disponibles = Casa.query.filter_by(usuario_id=None).all()
@@ -884,6 +903,7 @@ def descargar_pdf_gastos():
     pdf.output(output_path)
     return send_file(output_path, as_attachment=True)
 
+
 @app.route('/admin/editar-propietario/<int:id>', methods=['GET', 'POST'])
 @login_required
 def editar_propietario(id):
@@ -892,41 +912,48 @@ def editar_propietario(id):
     
     usuario = db.session.get(Usuario, id)
     if not usuario:
-        flash("Usuario no encontrado")
+        flash("Usuario no encontrado", "warning")
         return redirect(url_for('lista_propietarios'))
 
     if request.method == 'POST':
+        # 1. Actualizar datos básicos
         usuario.username = request.form.get('username')
         usuario.cedula = request.form.get('cedula')
         usuario.telefono = request.form.get('telefono')
-        nueva_pass = request.form.get('password')
-        nueva_casa_id = request.form.get('casa_id')
+        usuario.correo = request.form.get('correo') # <--- ACTUALIZA EL CORREO
         
+        # 2. Manejo de contraseña (solo si se escribe una nueva)
+        nueva_pass = request.form.get('password')
         if nueva_pass and nueva_pass.strip() != "":
             usuario.password = generate_password_hash(nueva_pass)
             
-        # Desvincular de casa anterior si existía
+        # 3. Lógica de vinculación de casa
+        nueva_casa_id = request.form.get('casa_id')
+        
+        # Desvincular de la casa anterior
         casa_anterior = Casa.query.filter_by(usuario_id=usuario.id).first()
         if casa_anterior:
             casa_anterior.usuario_id = None
-            # Opcional: ¿Quieres borrar el nombre de la casa si se queda sola? 
-            # Mejor dejarlo para no perder historial visual.
         
         # Vincular a la nueva casa
         if nueva_casa_id:
             nueva_casa = db.session.get(Casa, int(nueva_casa_id))
             if nueva_casa:
                 nueva_casa.usuario_id = usuario.id
-                # Sincronizamos nombre para que la tabla Casa esté actualizada
                 nueva_casa.dueno_nombre = usuario.username 
             
-        db.session.commit()
-        flash("Datos y vinculación actualizados correctamente")
+        try:
+            db.session.commit()
+            flash("✅ Datos y correo actualizados correctamente", "success")
+        except Exception as e:
+            db.session.rollback()
+            flash(f"Error al actualizar: {str(e)}", "danger")
+
         return redirect(url_for('lista_propietarios'))
 
+    # Para el formulario: mostrar casas libres o la que ya tiene el usuario
     casas_disponibles = Casa.query.filter((Casa.usuario_id == None) | (Casa.usuario_id == usuario.id)).all()
     return render_template('admin/editar_propietario.html', usuario=usuario, casas=casas_disponibles)
-
 
 @app.route('/propietario/descargar-mi-estado-pdf')
 @login_required
@@ -989,6 +1016,42 @@ def descargar_mi_estado_pdf():
     output_path = os.path.join('instance', f'Estado_Cuenta_Casa_{casa.numero_casa}.pdf')
     pdf.output(output_path)
     return send_file(output_path, as_attachment=True)
+
+
+@app.route('/admin/enviar-avisos-correo')
+@login_required
+def enviar_avisos_correo():
+    casas_con_deuda = Casa.query.filter(Casa.saldo_total > 0).all()
+    print(f"DEBUG: Se encontraron {len(casas_con_deuda)} casas con deuda.") # <--- MIRA ESTO
+    
+    contador_exitos = 0
+    for casa in casas_con_deuda:
+        usuario = Usuario.query.filter_by(id=casa.usuario_id).first()
+        
+        if usuario and usuario.correo:
+            msg = Message(
+                subject=f"Estado de Cuenta Pendiente - Casa {casa.numero_casa}",
+                recipients=[usuario.correo]
+            )
+            msg.body = f"""
+            Estimado(a) {usuario.username},
+
+            Le informamos que su propiedad (Casa {casa.numero_casa}) mantiene un saldo pendiente 
+            de ${casa.saldo_total:,.2f} en la administración de SISE Esperanza.
+
+            Le solicitamos cordialmente realizar su pago para el mantenimiento de la urbanización.
+
+            Atentamente,
+            La Administración.
+            """
+            try:
+                mail.send(msg)
+                contador_exitos += 1
+            except Exception as e:
+                print(f"Error enviando correo a {usuario.correo}: {e}")
+
+    flash(f"✅ Proceso finalizado. Se enviaron {contador_exitos} correos de recordatorio.", "success")
+    return redirect(url_for('inicio')) # O a la vista de reportes
 
 
 @app.route('/admin/pagos-globales')

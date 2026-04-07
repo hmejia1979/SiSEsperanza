@@ -39,6 +39,14 @@
     
     
     <div style="background: white; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); overflow: hidden; margin-bottom: 30px;">
+
+    <div style="text-align: right; margin-bottom: 20px;">
+        <a href="{{ url_for('enviar_avisos_correo') }}" 
+        onclick="return confirm('¿Estás seguro de enviar correos a todos los deudores?')"
+        style="background: #1e293b; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 0.9rem;">
+        ✉️ Enviar Avisos por Correo
+        </a>
+    </div>
     <table style="width: 100%; border-collapse: collapse; text-align: left;">
         <thead>
             <tr style="background: #f8fafc; border-bottom: 2px solid #e2e8f0;">

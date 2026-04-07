@@ -1,63 +1,78 @@
 {% extends "base.html" %}
+
 {% block content %}
-<div style="max-width: 500px; margin: 50px auto; padding: 0 20px;">
-    <div style="background: white; padding: 40px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;">
+<div style="max-width: 600px; margin: 40px auto; padding: 0 20px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+    
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 25px;">
+        <h2 style="color: #1e293b; margin: 0; font-size: 1.6rem; font-weight: 800;">📝 Editar Propietario</h2>
+        <a href="{{ url_for('lista_propietarios') }}" style="text-decoration: none; color: #64748b; font-size: 0.9rem; font-weight: 600; display: flex; align-items: center; gap: 5px;">
+            ✕ Cancelar
+        </a>
+    </div>
+
+    <div style="background: white; padding: 35px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;">
         
-        <div style="text-align: center; margin-bottom: 30px;">
-            <div style="background: #eff6ff; color: #3b82f6; width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 15px; font-size: 1.5rem;">
-                👤
-            </div>
-            <h2 style="color: #1e293b; margin: 0; font-size: 1.5rem; font-weight: 800;">Editar Propietario</h2>
-            <p style="color: #64748b; font-size: 0.9rem; margin-top: 5px;">Actualice las credenciales de acceso</p>
-        </div>
-
         <form method="POST">
+            <p style="text-transform: uppercase; color: #94a3b8; font-size: 0.75rem; font-weight: 800; letter-spacing: 0.05em; margin-bottom: 20px; border-bottom: 1px solid #f1f5f9; padding-bottom: 10px;">Información de la Cuenta</p>
+
             <div style="margin-bottom: 20px;">
-                <label style="display: block; margin-bottom: 8px; color: #475569; font-weight: 600;">Nombre de Usuario:</label>
+                <label style="display: block; margin-bottom: 8px; color: #475569; font-weight: 600; font-size: 0.9rem;">Nombre Completo / Usuario:</label>
                 <input type="text" name="username" value="{{ usuario.username }}" required 
-                       style="width: 100%; padding: 12px; border: 2px solid #f1f5f9; border-radius: 12px; outline: none;">
-            </div>
-            <div style="margin-bottom: 30px;">
-                <label style="display: block; margin-bottom: 8px; color: #475569; font-weight: 600;">Asignar a Propiedad:</label>
-                <select name="casa_id" style="width: 100%; padding: 12px; border: 2px solid #f1f5f9; border-radius: 12px; background: #f8fafc; outline: none; cursor: pointer;">
-                    <option value="">-- Sin casa asignada --</option>
-                    {% for c in casas %}
-                        <option value="{{ c.id }}" {% if c.usuario_id == usuario.id %}selected{% endif %}>
-                            🏠 Casa {{ c.numero_casa }} - {{ c.dueno_nombre }}
-                        </option>
-                    {% endfor %}
-                </select>
-                <small style="color: #94a3b8; display: block; margin-top: 5px;">Esto cambiará a qué casa tiene acceso este usuario.</small>
-            </div>
-            <div style="margin-bottom: 30px;">
-                <label style="display: block; margin-bottom: 8px; color: #475569; font-weight: 600;">Nueva Contraseña:</label>
-                <input type="password" name="password" placeholder="Dejar en blanco para no cambiar" 
-                       style="width: 100%; padding: 12px; border: 2px solid #f1f5f9; border-radius: 12px; outline: none;">
-                <small style="color: #94a3b8; display: block; margin-top: 5px;">Solo llene este campo si desea resetear la clave.</small>
-            </div>
-            <div style="margin-bottom: 20px;">
-                <label style="display: block; margin-bottom: 8px; color: #475569; font-weight: 600;">Cédula de Identidad:</label>
-                <input type="text" name="cedula" value="{{ usuario.cedula or '' }}" placeholder="Ej: 1712345678" 
-                    style="width: 100%; padding: 12px; border: 2px solid #f1f5f9; border-radius: 12px; outline: none;">
+                       style="width: 100%; padding: 12px; border: 2px solid #f1f5f9; border-radius: 12px; outline: none; transition: border-color 0.2s; box-sizing: border-box;">
             </div>
 
             <div style="margin-bottom: 20px;">
-                <label style="display: block; margin-bottom: 8px; color: #475569; font-weight: 600;">Teléfono / WhatsApp:</label>
-                <div style="position: relative;">
-                    <span style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%);">📞</span>
-                    <input type="text" name="telefono" value="{{ usuario.telefono or '' }}" placeholder="Ej: 0991234567" 
-                        style="width: 100%; padding: 12px 12px 12px 40px; border: 2px solid #f1f5f9; border-radius: 12px; outline: none;">
+                <label style="display: block; margin-bottom: 8px; color: #475569; font-weight: 600; font-size: 0.9rem;">Correo Electrónico (para avisos):</label>
+                <input type="email" name="correo" value="{{ usuario.correo or '' }}" placeholder="ejemplo@correo.com" 
+                       style="width: 100%; padding: 12px; border: 2px solid #f1f5f9; border-radius: 12px; outline: none; box-sizing: border-box;">
+                <small style="color: #64748b; font-size: 0.8rem; display: block; margin-top: 5px;">Obligatorio para el envío masivo de estados de cuenta.</small>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
+                <div>
+                    <label style="display: block; margin-bottom: 8px; color: #475569; font-weight: 600; font-size: 0.9rem;">Cédula:</label>
+                    <input type="text" name="cedula" value="{{ usuario.cedula or '' }}" 
+                           style="width: 100%; padding: 12px; border: 2px solid #f1f5f9; border-radius: 12px; box-sizing: border-box;">
+                </div>
+                <div>
+                    <label style="display: block; margin-bottom: 8px; color: #475569; font-weight: 600; font-size: 0.9rem;">Teléfono:</label>
+                    <input type="text" name="telefono" value="{{ usuario.telefono or '' }}" 
+                           style="width: 100%; padding: 12px; border: 2px solid #f1f5f9; border-radius: 12px; box-sizing: border-box;">
                 </div>
             </div>
-            <div style="display: flex; gap: 10px;">
-                <button type="submit" style="flex: 2; background: #3b82f6; color: white; padding: 14px; border: none; border-radius: 12px; font-weight: 700; cursor: pointer;">
-                    Guardar Cambios
-                </button>
-                <a href="{{ url_for('lista_propietarios') }}" style="flex: 1; text-align: center; background: #f1f5f9; color: #64748b; padding: 14px; border-radius: 12px; text-decoration: none; font-weight: 600;">
-                    Volver
-                </a>
+
+            <p style="text-transform: uppercase; color: #94a3b8; font-size: 0.75rem; font-weight: 800; letter-spacing: 0.05em; margin: 30px 0 20px; border-bottom: 1px solid #f1f5f9; padding-bottom: 10px;">Propiedad y Seguridad</p>
+
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; margin-bottom: 8px; color: #475569; font-weight: 600; font-size: 0.9rem;">Nueva Contraseña (dejar en blanco para no cambiar):</label>
+                <input type="password" name="password" placeholder="••••••••" 
+                       style="width: 100%; padding: 12px; border: 2px solid #f1f5f9; border-radius: 12px; box-sizing: border-box;">
             </div>
+
+            <div style="margin-bottom: 30px;">
+                <label style="display: block; margin-bottom: 8px; color: #475569; font-weight: 600; font-size: 0.9rem;">Asignar Casa / Villa:</label>
+                <select name="casa_id" style="width: 100%; padding: 12px; border: 2px solid #f1f5f9; border-radius: 12px; background: white; cursor: pointer; outline: none; box-sizing: border-box;">
+                    <option value="">-- Sin casa asignada --</option>
+                    {% for casa in casas %}
+                    <option value="{{ casa.id }}" {% if casa.usuario_id == usuario.id %}selected{% endif %}>
+                        Casa {{ casa.numero_casa }} (Prop: {{ casa.dueno_nombre }})
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <button type="submit" style="width: 100%; background: #1e293b; color: white; padding: 16px; border: none; border-radius: 14px; font-weight: 700; font-size: 1rem; cursor: pointer; transition: background 0.3s ease; box-shadow: 0 4px 12px rgba(30, 41, 59, 0.2);">
+                💾 Guardar Cambios
+            </button>
+
         </form>
     </div>
 </div>
+
+<style>
+    input:focus, select:focus {
+        border-color: #3b82f6 !important;
+        background-color: #f8fafc;
+    }
+</style>
 {% endblock %}
