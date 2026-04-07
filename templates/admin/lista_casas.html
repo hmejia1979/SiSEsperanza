@@ -47,10 +47,19 @@
                         <td class="text-end fw-bold {{ 'text-danger' if casa.saldo_total > 0 else 'text-success' }}">
                             ${{ "%.2f"|format(casa.saldo_total) }}
                         </td>
+                        
                         <td class="pe-4 text-end">
                             <a href="{{ url_for('detalle_casa', id=casa.id) }}" class="btn btn-light btn-sm border rounded-pill px-3">
                                 <i class="bi bi-search me-1"></i> Ver Ficha
                             </a>
+                            <td>
+                            <a href="{{ url_for('detalle_casa', id=casa.id) }}" class="btn btn-sm btn-info">Ver</a>
+                            <a href="{{ url_for('editar_casa', id=casa.id) }}" class="btn btn-sm btn-warning">Editar</a>
+                            
+                            <form action="{{ url_for('eliminar_casa', id=casa.id) }}" method="POST" style="display:inline;" onsubmit="return confirm('¿Estás seguro de eliminar esta casa? Esta acción no se puede deshacer.');">
+                                <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
+                            </form>
+                        </td>
                         </td>
                     </tr>
                     {% else %}

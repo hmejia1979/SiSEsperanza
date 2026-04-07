@@ -1,35 +1,120 @@
 {% extends "base.html" %}
+
 {% block content %}
-<div style="max-width: 600px; margin: 40px auto; background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-    <h2 style="color: #1e293b; margin-bottom: 25px;">✏️ Editar Casa {{ casa.numero_casa }}</h2>
-    
-    <form method="POST">
-        <label style="display: block; margin-bottom: 8px; font-weight: 600;">Número de Casa:</label>
-        <input type="text" name="numero_casa" value="{{ casa.numero_casa }}" required style="width: 100%; padding: 10px; margin-bottom: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8 col-lg-6">
+            
+            <div class="d-flex align-items-center justify-content-between mb-4">
+                <div>
+                    <h2 class="fw-bold text-dark mb-1">Editar Propiedad</h2>
+                    <p class="text-muted">Actualiza la información de la casa {{ casa.numero_casa }}</p>
+                </div>
+                <a href="{{ url_for('lista_casas') }}" class="btn btn-outline-secondary btn-sm shadow-sm">
+                    ← Volver a la lista
+                </a>
+            </div>
 
-        <label style="display: block; margin-bottom: 8px; font-weight: 600;">Nombre del Propietario (Real):</label>
-        <input type="text" name="dueno_nombre" value="{{ casa.dueno_nombre }}" required style="width: 100%; padding: 10px; margin-bottom: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+            <div class="card border-0 shadow-lg" style="border-radius: 20px; overflow: hidden;">
+                <div class="card-header bg-primary py-3">
+                    <h5 class="card-title text-white mb-0 text-center">Datos de la Vivienda</h5>
+                </div>
+                
+                <div class="card-body p-4 p-md-5">
+                    <form method="POST">
+                        
+                        <div class="mb-4">
+                            <label class="form-label fw-semibold text-secondary">
+                                <i class="fas fa-hashtag me-2"></i>Número de Casa / Villa
+                            </label>
+                            <input type="text" name="numero_casa" 
+                                   class="form-control form-control-lg border-2" 
+                                   style="border-radius: 10px;"
+                                   value="{{ casa.numero_casa }}" 
+                                   placeholder="Ej: Mzna 4 - Villa 12" required>
+                        </div>
 
-        <label style="display: block; margin-bottom: 8px; font-weight: 600;">Deuda Actual ($):</label>
-        <input type="number" step="0.01" name="saldo_total" value="{{ casa.saldo_total }}" required style="width: 100%; padding: 10px; margin-bottom: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-        <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #3b82f6;">Asignar Cuenta de Acceso (Usuario):</label>
-        <select name="usuario_id" style="width: 100%; padding: 10px; margin-bottom: 30px; border: 1px solid #3b82f6; border-radius: 8px; background: #eff6ff;">
-            <option value="">-- Sin cuenta de usuario --</option>
-            {% for u in usuarios %}
-                <option value="{{ u.id }}" {% if casa.usuario_id == u.id %}selected{% endif %}>
-                    {{ u.username }} (ID: {{ u.id }})
-                </option>
-            {% endfor %}
-        </select>
+                        <div class="mb-4">
+                            <label class="form-label fw-semibold text-secondary">
+                                <i class="fas fa-user me-2"></i>Nombre del Propietario
+                            </label>
+                            <input type="text" name="propietario" 
+                                   class="form-control form-control-lg border-2" 
+                                   style="border-radius: 10px;"
+                                   value="{{ casa.dueno_nombre }}" 
+                                   placeholder="Nombre completo" required>
+                            <div class="form-text mt-2">Este nombre se mostrará en los recibos de pago.</div>
+                        </div>
 
-        <div style="display: flex; gap: 10px;">
-            <button type="submit" style="flex: 1; background: #10b981; color: white; padding: 12px; border: none; border-radius: 8px; font-weight: 700; cursor: pointer;">
-                Guardar Cambios
-            </button>
-            <a href="{{ url_for('lista_casas') }}" style="flex: 1; text-align: center; background: #64748b; color: white; padding: 12px; border-radius: 8px; text-decoration: none; font-weight: 700;">
-                Cancelar
-            </a>
+                        <div class="mb-4">
+                            <label class="form-label fw-semibold text-secondary">
+                                <i class="fas fa-dollar-sign me-2"></i>Saldo Pendiente Actual
+                            </label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light border-2" style="border-radius: 10px 0 0 10px;">$</span>
+                                <input type="number" step="0.01" name="saldo_total" 
+                                       class="form-control form-control-lg border-2" 
+                                       style="border-radius: 0 10px 10px 0;"
+                                       value="{{ casa.saldo_total }}">
+                            </div>
+                            <small class="text-danger mt-1 d-block">
+                                * Edita este valor solo para correcciones manuales de deuda.
+                            </small>
+                        </div>
+
+                        <hr class="my-4 text-muted opacity-25">
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary btn-lg shadow" style="border-radius: 12px; font-weight: 600;">
+                                <i class="fas fa-save me-2"></i>Guardar Cambios
+                            </button>
+                            <button type="button" class="btn btn-link text-danger text-decoration-none mt-2" 
+                                    data-bs-toggle="modal" data-bs-target="#modalEliminar">
+                                <i class="fas fa-trash-alt me-2"></i>Eliminar esta casa permanentemente
+                            </button>
+                        </div>
+
+                    </form>
+                </div>
+            </div>
         </div>
-    </form>
+    </div>
 </div>
+
+<div class="modal fade" id="modalEliminar" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow" style="border-radius: 15px;">
+            <div class="modal-header border-0">
+                <h5 class="modal-title fw-bold">¿Confirmar eliminación?</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body text-center py-4">
+                <div class="text-danger mb-3">
+                    <i class="fas fa-exclamation-triangle fa-3x"></i>
+                </div>
+                <p>Estás a punto de eliminar la casa <strong>{{ casa.numero_casa }}</strong>.</p>
+                <p class="text-muted small">Esta acción no se puede deshacer y podría afectar el historial de pagos.</p>
+            </div>
+            <div class="modal-footer border-0 d-flex justify-content-center pb-4">
+                <button type="button" class="btn btn-light px-4" data-bs-dismiss="modal">Cancelar</button>
+                <form action="{{ url_for('eliminar_casa', id=casa.id) }}" method="POST">
+                    <button type="submit" class="btn btn-danger px-4">Sí, eliminar</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    body {
+        background-color: #f8fafc;
+    }
+    .form-control:focus {
+        border-color: #0d6efd;
+        box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.1);
+    }
+    .card-header {
+        background: linear-gradient(45deg, #0d6efd, #004fb1);
+    }
+</style>
 {% endblock %}

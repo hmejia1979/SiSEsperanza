@@ -16,6 +16,8 @@ from reportlab.lib.units import mm
 from fpdf import FPDF
 from flask_mail import Mail, Message
 from models import db, Usuario, Casa, Pago, Gasto, Configuracion, Deuda
+
+import json
 load_dotenv()
 
 UMBRAL_ALERTA_CAJA = 30.00  # Se activa si hay menos de $30
@@ -28,7 +30,7 @@ app.config['MAIL_SERVER'] = 'smtp.gmail.com'
 app.config['MAIL_PORT'] = 587
 app.config['MAIL_USE_TLS'] = True
 app.config['MAIL_USERNAME'] = 'hernymejia@gmail.com' # Reemplaza con tu correo
-app.config['MAIL_PASSWORD'] = '' # Reemplaza con tu contraseña de aplicación
+app.config['MAIL_PASSWORD'] = 'wovytcycsqboesgl' # Reemplaza con tu contraseña de aplicación
 app.config['MAIL_DEFAULT_SENDER'] = ('Aviso Conjunto Esperanza', 'hernymejia@gmail.com')
 
 mail = Mail(app)
@@ -214,62 +216,69 @@ def confirmar_pago_meses(casa_id):
 
     return redirect(url_for('detalle_casa', id=casa_id))
 
-import json # Import json at the top of app.py
 
 @app.route('/inicio')
 @login_required
 def inicio():
-    # --- GLOBAL DATA (Always needed) ---
+    # --- 1. DATOS GLOBALES (Calculados para ambos roles) ---
     ingresos_totales = db.session.query(db.func.sum(Pago.monto)).scalar() or 0.0
     gastos_totales = db.session.query(db.func.sum(Gasto.monto)).scalar() or 0.0
     saldo_en_caja = ingresos_totales - gastos_totales
 
-    # --- VIEW FOR ADMIN ---
+    # --- 2. VISTA PARA ADMINISTRADOR ---
     if current_user.rol == 'admin':
-        # 1. General Metrics
+        # Métricas para los cuadros superiores
         total_casas = Casa.query.count()
         casas_mora_count = Casa.query.filter(Casa.saldo_total > 0).count()
         casas_al_dia_count = total_casas - casas_mora_count
         
-        # 2. DATA FOR DEBTOR CHART (Donut)
-        # We need to send this as a JSON list to JavaScript
+        # Datos para el gráfico de Donas (Mora vs Al Día)
         datos_mora = [casas_al_dia_count, casas_mora_count]
 
-        # 3. DATA FOR EXPENSE CATEGORIES CHART (Pie)
-        # We group expenses by category and sum their amounts
+        # Datos para el gráfico de Gastos por Categoría
         gastos_por_categoria = db.session.query(
             Gasto.categoria, db.func.sum(Gasto.monto)
         ).group_by(Gasto.categoria).all()
 
-        # Prepare labels and data for JavaScript, handling empty categories
-        labels_gastos = []
-        valores_gastos = []
-        for cat, monto in gastos_por_categoria:
-            labels_gastos.append(cat if cat else "Sin Categoría")
-            valores_gastos.append(float(monto))
+        labels_gastos = [cat if cat else "Sin Categoría" for cat, monto in gastos_por_categoria]
+        valores_gastos = [float(monto) for cat, monto in gastos_por_categoria]
 
-        # 4. Data for other sections (if needed)
+        # Lista de pagos para la tabla de "Recientes"
         ultimos_pagos_admin = Pago.query.order_by(Pago.id.desc()).limit(5).all()
         
-        # NOTE: We use json.dumps to safely pass Python lists to JavaScript
         return render_template('admin/inicio_admin.html', 
                                saldo_caja=saldo_en_caja,
                                ingresos=ingresos_totales,
                                gastos=gastos_totales,
                                total_casas=total_casas,
                                casas_mora=casas_mora_count,
-                               # CHART DATA
                                labels_mora=json.dumps(['Al Día', 'En Mora']),
                                datos_mora=json.dumps(datos_mora),
                                labels_gastos=json.dumps(labels_gastos),
                                datos_gastos=json.dumps(valores_gastos),
                                pagos_recientes=ultimos_pagos_admin)
 
-    # --- VIEW FOR HOMEOWNER (Unchanged) ---
+    # --- 3. VISTA PARA DUEÑO (Propietario) ---
     else:
-        # (Keep the homeowner logic from the previous step here)
-        return render_template('inicio_dueno.html', ...)
-
+        # Buscamos la casa vinculada al usuario logueado
+        casa_dueno = Casa.query.filter_by(usuario_id=current_user.id).first()
+        
+        # Obtenemos los pagos de este dueño específico
+        mis_pagos = []
+        saldo_p = 0.0
+        if casa_dueno:
+            mis_pagos = Pago.query.filter_by(casa_id=casa_dueno.id).order_by(Pago.fecha.desc()).limit(5).all()
+            saldo_p = casa_dueno.saldo_total or 0.0
+        
+        # Gastos de la comunidad (lo que ve el dueño en su panel)
+        ultimos_gastos = Gasto.query.order_by(Gasto.fecha.desc()).limit(5).all()
+        
+        return render_template('inicio_dueno.html', 
+                               saldo_pendiente=saldo_p, 
+                               saldo_caja=saldo_en_caja, 
+                               pagos=mis_pagos, 
+                               gastos_comunidad=ultimos_gastos)
+        
 @app.route('/admin/configuracion', methods=['GET', 'POST'])
 @login_required
 def configuracion():
@@ -1069,39 +1078,47 @@ def pagos_globales():
                            total=total_recaudado,
                            current_time=datetime.now())
 
-@app.route('/editar_casa/<int:id>', methods=['GET', 'POST'])
+
+@app.route('/admin/editar-casa/<int:id>', methods=['GET', 'POST'])
+@login_required
 def editar_casa(id):
-    # 1. Buscar la casa por ID o lanzar error 404 si no existe
+    if current_user.rol != 'admin':
+        return redirect(url_for('inicio'))
+    
     casa = Casa.query.get_or_404(id)
     
     if request.method == 'POST':
-        # 2. Capturar los datos del formulario
-        casa.direccion = request.form['direccion']
-        casa.propietario = request.form['propietario']
+        casa.numero_casa = request.form.get('numero_casa')
+        casa.dueno_nombre = request.form.get('propietario')
+        casa.saldo_total = float(request.form.get('saldo_total') or 0)
         
         try:
-            # 3. Guardar cambios
             db.session.commit()
-            flash("Casa actualizada exitosamente")
-            return redirect(url_for('vista_casas'))
-        except:
-            return "Hubo un error al editar la casa."
-            
-    # Si es GET, mostrar el formulario con los datos actuales
-    return render_template('/admin/editar_casa.html', casa=casa)
+            flash(f"✅ Casa {casa.numero_casa} actualizada correctamente", "success")
+            return redirect(url_for('lista_casas'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f"Error al actualizar: {str(e)}", "danger")
 
-@app.route('/eliminar_casa/<int:id>', methods=['POST'])
+    return render_template('admin/editar_casa.html', casa=casa)
+
+
+@app.route('/admin/eliminar-casa/<int:id>', methods=['POST'])
+@login_required
 def eliminar_casa(id):
-    # 1. Buscar la casa
-    casa = Casa.query.get_or_404(id)
+    if current_user.rol != 'admin':
+        return redirect(url_for('inicio'))
     
+    casa = Casa.query.get_or_404(id)
     try:
-        # 2. Eliminar de la sesión y confirmar
+        # Nota: Si la casa tiene pagos o deudas asociadas, 
+        # esto podría dar error dependiendo de cómo definiste los modelos.
         db.session.delete(casa)
         db.session.commit()
-        flash("Casa eliminada correctamente")
-    except:
-        flash("No se pudo eliminar la casa")
+        flash(f"🗑️ Casa {casa.numero_casa} eliminada con éxito", "warning")
+    except Exception as e:
+        db.session.rollback()
+        flash("No se puede eliminar la casa porque tiene deudas o pagos registrados.", "danger")
         
     return redirect(url_for('lista_casas'))
 
@@ -1235,6 +1252,40 @@ def reporte_general():
     casas = Casa.query.all()
     
     return render_template('admin/reporte.html', total=total_recaudado, casas=casas)
+
+
+@app.route('/admin/registrar-otros-ingresos', methods=['GET', 'POST'])
+@login_required
+def registrar_otros_ingresos():
+    if current_user.rol != 'admin':
+        return redirect(url_for('inicio'))
+
+    if request.method == 'POST':
+        concepto = request.form.get('concepto')  # Ej: "Alquiler de Local"
+        monto = float(request.form.get('monto'))
+        fecha_str = request.form.get('fecha')
+        fecha = datetime.strptime(fecha_str, '%Y-%m-%d')
+
+        # Creamos un registro en la tabla Pago, pero sin casa_id
+        # (Asegúrate de que tu modelo Pago permita casa_id=None o usa una tabla nueva)
+        nuevo_ingreso = Pago(
+            monto=monto,
+            fecha=fecha,
+            nota=f"OTROS INGRESOS: {concepto}",
+            casa_id=None  # Esto indica que es ingreso general del conjunto
+        )
+
+        try:
+            db.session.add(nuevo_ingreso)
+            db.session.commit()
+            flash(f"✅ Ingreso por '{concepto}' registrado correctamente", "success")
+            return redirect(url_for('inicio'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f"Error al registrar: {str(e)}", "danger")
+
+    return render_template('admin/registrar_otros_ingresos.html')
+
 
 @app.route('/admin/reportes')
 @login_required
