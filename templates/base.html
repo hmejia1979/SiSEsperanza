@@ -1,152 +1,241 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-   
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Control de Pagos - SiSEsperanza</title>
+    <title>SiSEsperanza - Panel de Control</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
     <style>
-        /* RESET TOTAL: Quitamos cualquier comportamiento de "centrado" forzado */
-        html, body {
-            margin: 0;
-            padding: 0;
-            height: auto !important; /* Permitimos que la página crezca hacia abajo */
-            min-height: 100%;
+        :root {
+            --sidebar-width: 260px;
+            --sidebar-bg: #1e293b; /* Slate 800 */
+            --sidebar-hover: #334155;
+            --accent-blue: #3b82f6;
+            --text-muted: #cbd5e1;
+        }
+
+        body {
             background-color: #f0f2f5;
             font-family: 'Segoe UI', system-ui, sans-serif;
+            margin: 0;
+            display: flex;
         }
 
-        /* NAVBAR: Fija arriba, siempre visible */
-        nav {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 70px;
-            background: #1e293b;
+        /* SIDEBAR ESTILOS */
+        #sidebar {
+            width: var(--sidebar-width);
+            height: 100vh;
+            background: var(--sidebar-bg);
             color: white;
+            position: fixed;
+            left: 0;
+            top: 0;
+            display: flex;
+            flex-direction: column;
             z-index: 1000;
+            transition: all 0.3s ease;
+        }
+
+        .sidebar-brand {
+            padding: 25px 20px;
             display: flex;
             align-items: center;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-        }
-
-        .nav-content {
-            max-width: 1200px;
-            margin: 0 auto;
-            width: 100%;
-            padding: 0 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        /* CONTENEDOR PRINCIPAL: El margen superior es CLAVE para que no se monte */
-        main {
-            display: block; /* IMPORTANTE: No usar flex aquí para el layout principal */
-            margin-top: 90px; /* Deja espacio para la Nav de 70px + aire */
-            margin-bottom: 50px;
-            padding: 0 20px;
-            width: 100%;
-            box-sizing: border-box;
-        }
-
-        .container {
-            max-width: 1100px;
-            margin: 0 auto;
-            background: transparent;
-        }
-
-        /* ESTILOS DE LINKS */
-        .nav-link {
-            color: #cbd5e1;
+            gap: 12px;
             text-decoration: none;
-            margin-left: 15px;
-            font-size: 0.9rem;
-            transition: 0.3s;
+            background: rgba(0,0,0,0.2);
         }
-        .nav-link:hover { color: white; }
 
-        /* ALERTAS */
-        .alert {
-            padding: 15px;
-            margin-bottom: 20px;
-            border-radius: 8px;
-            border: 1px solid transparent;
+        .sidebar-brand span {
+            color: white;
+            font-weight: 800;
+            font-size: 1.25rem;
+            letter-spacing: 0.5px;
         }
-        .alert-success { background: #dcfce7; color: #166534; border-color: #bbf7d0; }
-        .alert-danger { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
 
-        /* WHATSAPP */
+        .nav-menu {
+            flex-grow: 1;
+            padding: 20px 0;
+            overflow-y: auto;
+        }
+
+        .nav-item-header {
+            padding: 10px 25px;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #64748b;
+            font-weight: 700;
+        }
+
+        .sidebar-link {
+            padding: 12px 25px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            color: var(--text-muted);
+            text-decoration: none;
+            transition: all 0.2s;
+            border-left: 4px solid transparent;
+            font-size: 0.95rem;
+        }
+
+        .sidebar-link:hover {
+            background: var(--sidebar-hover);
+            color: white;
+        }
+
+        .sidebar-link.active {
+            background: rgba(59, 130, 246, 0.1);
+            color: var(--accent-blue);
+            border-left-color: var(--accent-blue);
+            font-weight: 600;
+        }
+
+        .sidebar-link i {
+            font-size: 1.1rem;
+            width: 20px;
+            text-align: center;
+        }
+
+        /* PERFIL DE USUARIO ABAJO */
+        .sidebar-footer {
+            padding: 20px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            background: rgba(0,0,0,0.1);
+        }
+
+        .user-pill {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 12px;
+            margin-bottom: 15px;
+        }
+
+        /* CONTENIDO PRINCIPAL */
+        main {
+            margin-left: var(--sidebar-width);
+            width: calc(100% - var(--sidebar-width));
+            min-height: 100vh;
+            padding: 30px;
+            transition: all 0.3s ease;
+        }
+
+        /* BOTÓN WHATSAPP */
         .btn-ws {
             position: fixed;
-            bottom: 20px;
-            right: 20px;
+            bottom: 30px;
+            right: 30px;
             background: #25d366;
-            width: 60px;
-            height: 60px;
+            width: 55px;
+            height: 55px;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
+            color: white;
             text-decoration: none;
-            font-size: 30px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            font-size: 24px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
             z-index: 999;
+            transition: transform 0.3s;
+        }
+        .btn-ws:hover { transform: scale(1.1); color: white; }
+
+        /* RESPONSIVO */
+        @media (max-width: 992px) {
+            #sidebar { margin-left: calc(-1 * var(--sidebar-width)); }
+            main { margin-left: 0; width: 100%; }
+            #sidebar.active { margin-left: 0; }
         }
     </style>
 </head>
 <body>
 
     {% if current_user.is_authenticated %}
-    <nav>
-    <div class="nav-content">
-        <a href="{{ url_for('inicio') }}" style="text-decoration: none; display: flex; align-items: center; gap: 10px;">
-            <span style="font-size: 1.5rem;">🏘️</span>
-            <span style="color: white; font-weight: 800; font-size: 1.2rem; letter-spacing: 0.5px;">SiS<span style="color: #3b82f6;">Esperanza</span></span>
+    <nav id="sidebar">
+        <a href="{{ url_for('inicio') }}" class="sidebar-brand">
+            <span>🏘️ SiS<span style="color: var(--accent-blue);">Esperanza</span></span>
         </a>
-        
-        <div style="display: flex; align-items: center; gap: 10px;">
+
+        <div class="nav-menu">
             {% if current_user.rol == 'admin' %}
-                <a class="nav-link" href="{{ url_for('inicio') }}">🏠 Inicio</a>
-                <a class="nav-link" href="{{ url_for('lista_casas') }}">📦 Casas</a>
-                <a class="nav-link" href="{{ url_for('lista_propietarios') }}">👥 Propietarios</a>
-                <a class="nav-link" href="{{ url_for('pagos_globales') }}">💰 Pagos</a>
-                <a class="nav-link" href="{{ url_for('registrar_gasto') }}">💸 Gastos</a>
-                <a class="nav-link" href="{{ url_for('configuracion') }}" title="Configuración">⚙️</a>
-                <a class="nav-link" href="{{ url_for('vista_reportes') }}">📊 Reportes</a>
+                <div class="nav-item-header">Principal</div>
+                <a href="{{ url_for('inicio') }}" class="sidebar-link {{ 'active' if request.endpoint == 'inicio' }}">
+                    <i class="bi bi-grid-1x2-fill"></i> Panel General
+                </a>
+                
+                <div class="nav-item-header">Administración</div>
+                <a href="{{ url_for('lista_casas') }}" class="sidebar-link {{ 'active' if request.endpoint == 'lista_casas' }}">
+                    <i class="bi bi-houses-fill"></i> Gestión de Casas
+                </a>
+                <a href="{{ url_for('lista_propietarios') }}" class="sidebar-link {{ 'active' if request.endpoint == 'lista_propietarios' }}">
+                    <i class="bi bi-people-fill"></i> Propietarios
+                </a>
+                
+                <div class="nav-item-header">Finanzas</div>
+                <a href="{{ url_for('pagos_globales') }}" class="sidebar-link {{ 'active' if request.endpoint == 'pagos_globales' }}">
+                    <i class="bi bi-cash-stack"></i> Control de Pagos
+                </a>
+                <a href="{{ url_for('registrar_gasto') }}" class="sidebar-link {{ 'active' if request.endpoint == 'registrar_gasto' }}">
+                    <i class="bi bi-graph-down-arrow"></i> Egresos / Gastos
+                </a>
+                <a href="{{ url_for('lista_otros_ingresos') }}" class="sidebar-link {{ 'active' if request.endpoint == 'lista_otros_ingresos' }}">
+                    <i class="bi bi-building-add"></i> Ingresos Extras
+                </a>
+
+                <div class="nav-item-header">Reportes y Datos</div>
+                <a href="{{ url_for('vista_reportes') }}" class="sidebar-link {{ 'active' if request.endpoint == 'vista_reportes' }}">
+                    <i class="bi bi-bar-chart-line-fill"></i> Reportes PDF/Excel
+                </a>
+                <a href="{{ url_for('configuracion') }}" class="sidebar-link {{ 'active' if request.endpoint == 'configuracion' }}">
+                    <i class="bi bi-gear-fill"></i> Configuración
+                </a>
             {% else %}
-                <a class="nav-link" href="{{ url_for('inicio') }}">📊 Mi Estado</a>
-                <a class="nav-link" href="{{ url_for('cambiar_password') }}">🔑 Seguridad</a>
+                <div class="nav-item-header">Residente</div>
+                <a href="{{ url_for('inicio') }}" class="sidebar-link {{ 'active' if request.endpoint == 'inicio' }}">
+                    <i class="bi bi-person-badge-fill"></i> Mi Estado de Cuenta
+                </a>
+                <a href="{{ url_for('cambiar_password') }}" class="sidebar-link {{ 'active' if request.endpoint == 'cambiar_password' }}">
+                    <i class="bi bi-shield-lock-fill"></i> Seguridad
+                </a>
             {% endif %}
+        </div>
 
-            <div style="width: 1px; height: 25px; background: rgba(255,255,255,0.2); margin: 0 10px;"></div>
-
-            <div style="display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.1); padding: 5px 12px; border-radius: 50px;">
-                <div style="background: #3b82f6; color: white; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.7rem;">
+        <div class="sidebar-footer">
+            <div class="user-pill">
+                <div style="background: var(--accent-blue); width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: bold;">
                     {{ current_user.username[0] | upper }}
                 </div>
-                <span style="color: white; font-size: 0.85rem; font-weight: 500;">{{ current_user.username }}</span>
+                <div class="overflow-hidden">
+                    <div class="text-truncate fw-bold small">{{ current_user.username }}</div>
+                    <div style="font-size: 0.7rem; color: var(--text-muted);">{{ current_user.rol | capitalize }}</div>
+                </div>
             </div>
-
-            <a href="{{ url_for('logout') }}" style="background: #ef4444; color: white; padding: 7px 14px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 0.85rem; margin-left: 10px; transition: 0.3s;" onmouseover="this.style.background='#dc2626'" onmouseout="this.style.background='#ef4444'">
-                🚪 Salir
+            <a href="{{ url_for('logout') }}" class="btn btn-danger w-100 btn-sm fw-bold">
+                <i class="bi bi-box-arrow-left me-2"></i> Cerrar Sesión
             </a>
-            
         </div>
-    </div>
-</nav>
+    </nav>
     {% endif %}
 
     <main>
-        <div class="container">
+        <div class="container-fluid">
+            <button class="btn btn-dark d-lg-none mb-4" onclick="document.getElementById('sidebar').classList.toggle('active')">
+                <i class="bi bi-list"></i> Menú
+            </button>
+
             {% with messages = get_flashed_messages(with_categories=true) %}
               {% if messages %}
                 {% for category, message in messages %}
-                  <div class="alert alert-{{ 'success' if category == 'success' else 'danger' }}">
+                  <div class="alert alert-{{ 'success' if category == 'success' else 'danger' }} alert-dismissible fade show shadow-sm border-0">
                     {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                   </div>
                 {% endfor %}
               {% endif %}
@@ -156,7 +245,10 @@
         </div>
     </main>
 
-    <a href="https://wa.me/{{ whatsapp_global }}" class="btn-ws" target="_blank">📱</a>
+    <a href="https://wa.me/{{ whatsapp_global }}" class="btn-ws" target="_blank" title="Soporte WhatsApp">
+        <i class="fab fa-whatsapp"></i>
+    </a>
 
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

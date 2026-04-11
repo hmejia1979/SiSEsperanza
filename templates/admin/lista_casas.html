@@ -7,12 +7,14 @@
             <h2 class="fw-bold text-dark"><i class="bi bi-houses-fill me-2"></i>Gestión de Casas</h2>
             <p class="text-muted mb-0">Listado completo de socios y estados de cuenta.</p>
         </div>
-        <a href="{{ url_for('recalcular_saldos') }}" class="btn btn-outline-secondary shadow-sm rounded-pill me-2">
-            <i class="bi bi-arrow-clockwise"></i> Sincronizar Saldos
-        </a>
-        <a href="{{ url_for('registrar_casa') }}" class="btn btn-primary btn-lg shadow-sm rounded-pill">
-            <i class="bi bi-plus-lg"></i> Nueva Casa
-        </a>
+        <div>
+            <a href="{{ url_for('recalcular_saldos') }}" class="btn btn-outline-secondary shadow-sm rounded-pill me-2">
+                <i class="bi bi-arrow-clockwise"></i> Sincronizar Saldos
+            </a>
+            <a href="{{ url_for('registrar_casa') }}" class="btn btn-primary btn-lg shadow-sm rounded-pill">
+                <i class="bi bi-plus-lg"></i> Nueva Casa
+            </a>
+        </div>
     </div>
 
     <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
@@ -34,7 +36,7 @@
                             <span class="badge bg-dark px-3 py-2 rounded-3">{{ casa.numero_casa }}</span>
                         </td>
                         <td>
-                            <div class="fw-bold">{{ casa.dueno_nombre }}</div>
+                            <div class="fw-bold">{{ casa.dueno_nombre or 'Sin nombre' }}</div>
                             <small class="text-muted">ID: {{ casa.id }}</small>
                         </td>
                         <td class="text-center">
@@ -49,17 +51,23 @@
                         </td>
                         
                         <td class="pe-4 text-end">
-                            <a href="{{ url_for('detalle_casa', id=casa.id) }}" class="btn btn-light btn-sm border rounded-pill px-3">
-                                <i class="bi bi-search me-1"></i> Ver Ficha
-                            </a>
-                            <td>
-                            <a href="{{ url_for('detalle_casa', id=casa.id) }}" class="btn btn-sm btn-info">Ver</a>
-                            <a href="{{ url_for('editar_casa', id=casa.id) }}" class="btn btn-sm btn-warning">Editar</a>
-                            
-                            <form action="{{ url_for('eliminar_casa', id=casa.id) }}" method="POST" style="display:inline;" onsubmit="return confirm('¿Estás seguro de eliminar esta casa? Esta acción no se puede deshacer.');">
-                                <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
-                            </form>
-                        </td>
+                            <div class="btn-group me-2">
+                                <a href="{{ url_for('detalle_casa', id=casa.id) }}" class="btn btn-outline-info btn-sm">Ver</a>
+                                <a href="{{ url_for('editar_casa', id=casa.id) }}" class="btn btn-outline-warning btn-sm">Editar</a>
+                                <form action="{{ url_for('eliminar_casa', id=casa.id) }}" method="POST" style="display:inline;" onsubmit="return confirm('¿Estás seguro?');">
+                                    <button type="submit" class="btn btn-outline-danger btn-sm">Eliminar</button>
+                                </form>
+                            </div>
+
+                            {# CORRECCIÓN AQUÍ: Solo filtramos por deuda_anterior #}
+                            {% if casa.deuda_anterior > 0 %}
+                                <a href="{{ url_for('registrar_pago', casa_id=casa.id) }}" 
+                                   style="background: #f97316; color: white; padding: 5px 12px; border-radius: 20px; text-decoration: none; font-weight: 600; font-size: 0.8rem; display: inline-block;">
+                                    ⚠️ Cobrar 2025
+                                </a>
+                            {% else %}
+                                <span class="text-muted small"><i class="bi bi-check2-all"></i> Sin deuda 2025</span>
+                            {% endif %}
                         </td>
                     </tr>
                     {% else %}

@@ -3,11 +3,33 @@
 <div style="max-width: 800px; margin: 0 auto;">
     <div style="background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
         <h2 style="color: #1e293b; margin-top: 0;">💰 Registrar Pago: Casa {{ casa.numero_casa }}</h2>
-        <p style="color: #64748b;">Seleccione los meses que el propietario está cancelando.</p>
+        <p style="color: #64748b;">Seleccione los meses o abone a la deuda anterior.</p>
 
         <form action="{{ url_for('confirmar_pago_meses', casa_id=casa.id) }}" method="POST">
+            
+            {% if casa.deuda_anterior > 0 %}
+            <div style="background: #fff7ed; border: 2px solid #fdba74; padding: 20px; border-radius: 12px; margin-bottom: 25px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <div>
+                        <h4 style="color: #9a3412; margin: 0;">⚠️ Saldo Pendiente 2025</h4>
+                        <small style="color: #c2410c;">Deuda acumulada de años anteriores</small>
+                    </div>
+                    <span style="font-size: 1.5rem; font-weight: 800; color: #dc2626;">${{ "{:,.2f}".format(casa.deuda_anterior) }}</span>
+                </div>
+                
+                <div style="margin-top: 10px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #9a3412;">Monto a abonar hoy:</label>
+                    <div style="position: relative;">
+                        <span style="position: absolute; left: 12px; top: 10px; color: #9a3412; font-weight: bold;">$</span>
+                        <input type="number" step="0.01" name="monto_abono" placeholder="0.00" 
+                               style="width: 100%; padding: 10px 10px 10px 30px; border-radius: 8px; border: 1px solid #fdba74; background: white;"
+                               max="{{ casa.deuda_anterior }}">
+                    </div>
+                </div>
+            </div>
+            {% endif %}
             <div style="margin: 20px 0;">
-                <h4 style="color: #1e293b; border-bottom: 2px solid #f1f5f9; padding-bottom: 10px;">Meses Pendientes</h4>
+                <h4 style="color: #1e293b; border-bottom: 2px solid #f1f5f9; padding-bottom: 10px;">Meses Pendientes 2026</h4>
                 
                 {% for deuda in casa.deudas_detalladas if not deuda.pagado %}
                 <label style="display: flex; align-items: center; justify-content: space-between; padding: 15px; border: 1px solid #e2e8f0; border-radius: 10px; margin-bottom: 10px; cursor: pointer; transition: 0.2s;" 
@@ -24,9 +46,11 @@
                     <span style="font-weight: 800; color: #1e293b;">${{ "{:,.2f}".format(deuda.monto) }}</span>
                 </label>
                 {% else %}
-                <div style="text-align: center; padding: 20px; color: #10b981; font-weight: 600;">
-                    🎉 ¡Esta casa está al día con todos sus meses!
-                </div>
+                    {% if casa.deuda_anterior <= 0 %}
+                    <div style="text-align: center; padding: 20px; color: #10b981; font-weight: 600;">
+                        🎉 ¡Esta casa está totalmente al día!
+                    </div>
+                    {% endif %}
                 {% endfor %}
             </div>
 
@@ -41,7 +65,7 @@
                 </div>
                 
                 <button type="submit" style="width: 100%; background: #3b82f6; color: white; border: none; padding: 15px; border-radius: 10px; font-weight: 700; font-size: 1rem; cursor: pointer; box-shadow: 0 4px 6px rgba(59, 130, 246, 0.2);">
-                    Confirmar Pago de Meses Seleccionados
+                    Confirmar Pago / Abono
                 </button>
             </div>
         </form>

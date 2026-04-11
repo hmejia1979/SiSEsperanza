@@ -3,7 +3,7 @@
 {% block content %}
 <div class="container py-4">
     <div style="margin-bottom: 30px;">
-        <h2 style="color: #1e293b; font-weight: 700;">📊 Resumen Financiero SISE</h2>
+        <h2 style="color: #1e293b; font-weight: 700;">📊 Resumen Financiero SISEsperanza</h2>
         <p style="color: #64748b;">Estado general de ingresos, egresos y cuentas por cobrar al día de hoy.</p>
     </div>
 
@@ -82,11 +82,43 @@
     </table>
 </div>
 
+</div>
+<div style="margin-bottom: 40px;">
+   
+    
+    <div class="container py-4">
+    <h2 style="color: #1e293b; font-weight: 700; margin-bottom: 25px;">📊 Centro de Reportes SISEsperanza</h2>
 
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-bottom: 40px;">
+        
+        <div style="background: white; padding: 25px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border-top: 5px solid #6366f1;">
+            <h4 style="margin: 0 0 10px 0;">📅 Matriz Anual de Pagos</h4>
+            <p style="color: #64748b; font-size: 0.85rem; margin-bottom: 20px;">
+                Descarga el Excel con la cuadrícula de pagos (Enero-Diciembre) de todas las casas. Ideal para auditoría.
+            </p>
+            <a href="{{ url_for('reporte_matriz_anual') }}" style="display: block; text-align: center; background: #6366f1; color: white; padding: 10px; border-radius: 8px; text-decoration: none; font-weight: 600;">
+                Descargar Excel
+            </a>
+        </div>
+
+        <div style="background: white; padding: 25px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border-top: 5px solid #ef4444;">
+            <h4 style="margin: 0 0 10px 0;">📜 Rendición de Cuentas</h4>
+            <p style="color: #64748b; font-size: 0.85rem; margin-bottom: 20px;">
+                PDF con el balance general de caja. Documento formal con logo para entregar en la asamblea de fin de año.
+            </p>
+            <a href="{{ url_for('rendicion_cuentas_pdf') }}" style="display: block; text-align: center; background: #ef4444; color: white; padding: 10px; border-radius: 8px; text-decoration: none; font-weight: 600;">
+                Descargar PDF
+            </a>
+        </div>
+
+    </div>
     <div style="text-align: center; margin-top: 20px;">
         <a href="{{ url_for('lista_casas') }}" style="text-decoration: none; color: #64748b; font-weight: 600; font-size: 0.9rem;">
             ← Volver al listado general de casas
         </a>
     </div>
+
+    <div style="background: white; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); overflow: hidden;">
+        </div>
 </div>
 {% endblock %}

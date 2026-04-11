@@ -17,14 +17,14 @@ class Usuario(db.Model, UserMixin):
     telefono = db.Column(db.String(20), nullable=True)
     correo = db.Column(db.String(100), nullable=True) # Opcional, pero muy útil
 
-
 class Casa(db.Model):
     __tablename__ = 'casas'
     id = db.Column(db.Integer, primary_key=True)
     numero_casa = db.Column(db.String(10), unique=True, nullable=False)
-    dueno_nombre = db.Column(db.String(100)) # Nombre real para mostrar
+    dueno_nombre = db.Column(db.String(100))
     saldo_total = db.Column(db.Float, default=0.0)
-    # EL CAMBIO CLAVE: Vincular con el ID del usuario
+    # NUEVO: Saldo arrastrado del año anterior
+    deuda_anterior = db.Column(db.Float, default=0.0) 
     usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=True)
     propietario_user = db.relationship('Usuario', backref='casa', uselist=False)
     pagos = db.relationship('Pago', backref='casa', lazy=True, cascade="all, delete-orphan")
@@ -85,4 +85,13 @@ class Pago(db.Model):
     fecha = db.Column(db.DateTime, default=datetime.utcnow)
     casa_id = db.Column(db.Integer, db.ForeignKey('casas.id'), nullable=False)
     deuda_id = db.Column(db.Integer, db.ForeignKey('deudas.id'), nullable=True)
+    nota = db.Column(db.String(200), nullable=True)
     # concepto = db.Column(db.String(200)) # Usa esto en lugar de 'nota' si prefieres
+
+class IngresoExtra(db.Model):
+    __tablename__ = 'otros_ingresos'
+    id = db.Column(db.Integer, primary_key=True)
+    monto = db.Column(db.Float, nullable=False)
+    fecha = db.Column(db.DateTime, default=datetime.utcnow)
+    concepto = db.Column(db.String(200), nullable=False)
+    categoria = db.Column(db.String(50))  # Ej: Alquiler, Multa, Donación

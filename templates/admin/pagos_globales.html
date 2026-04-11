@@ -8,65 +8,76 @@
             <h2 style="color: #1e293b; margin: 0;">💰 Historial Global de Pagos</h2>
             <p style="color: #64748b; margin: 5px 0 0 0;">Reporte detallado de ingresos de la urbanización</p>
         </div>
-        <a href="{{ url_for('registrar_pago') }}" 
-           style="background: #1e293b; color: white; text-decoration: none; padding: 12px 20px; border-radius: 10px; font-weight: bold; display: flex; align-items: center; gap: 8px; transition: 0.3s;">
+        <a href="{{ url_for('lista_casas') }}" 
+           style="background: #1e293b; color: white; text-decoration: none; padding: 12px 20px; border-radius: 10px; font-weight: bold; display: flex; align-items: center; gap: 8px;">
             ➕ Registrar Nuevo Pago
         </a>
     </div>
 
+    <div style="background: white; padding: 20px; border-radius: 15px; margin-bottom: 25px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+        <form method="GET" action="{{ url_for('pagos_globales') }}" style="display: flex; gap: 10px; align-items: center;">
+            <div style="position: relative; flex-grow: 1;">
+                <span style="position: absolute; left: 15px; top: 50%; transform: translateY(-50%); color: #94a3b8;">🔍</span>
+                <input type="text" name="q" value="{{ busqueda }}" placeholder="Buscar por casa, propietario o concepto..." 
+                       style="width: 100%; padding: 12px 12px 12px 40px; border-radius: 10px; border: 1px solid #e2e8f0; font-size: 0.95rem;">
+            </div>
+            <button type="submit" style="background: #3b82f6; color: white; border: none; padding: 12px 25px; border-radius: 10px; font-weight: 600; cursor: pointer;">
+                Filtrar
+            </button>
+            {% if busqueda %}
+            <a href="{{ url_for('pagos_globales') }}" style="color: #ef4444; text-decoration: none; font-size: 0.9rem; font-weight: 600;">
+                Limpiar
+            </a>
+            {% endif %}
+        </form>
+    </div>
+
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-bottom: 30px;">
         <div style="background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border-top: 4px solid #10b981;">
-            <p style="color: #64748b; font-size: 0.85rem; font-weight: bold; margin-bottom: 5px;">RECAUDACIÓN TOTAL</p>
-            <h3 style="color: #10b981; font-size: 1.8rem; margin: 0;">${{ "{:,.2f}".format(total) }}</h3>
+            <p style="color: #64748b; font-size: 0.85rem; font-weight: bold; margin-bottom: 5px;">RECAUDACIÓN FILTRADA</p>
+            <h3 style="color: #10b981; font-size: 1.8rem; margin: 0;">${{ "{:,.2f}".format(total or 0) }}</h3>
         </div>
         <div style="background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border-top: 4px solid #3b82f6;">
-            <p style="color: #64748b; font-size: 0.85rem; font-weight: bold; margin-bottom: 5px;">PAGOS REGISTRADOS</p>
-            <h3 style="color: #3b82f6; font-size: 1.8rem; margin: 0;">{{ pagos|length }} transacciones</h3>
+            <p style="color: #64748b; font-size: 0.85rem; font-weight: bold; margin-bottom: 5px;">RESULTADOS</p>
+            <h3 style="color: #3b82f6; font-size: 1.8rem; margin: 0;">{{ pagos|length }} registros</h3>
         </div>
     </div>
 
     <div style="background: white; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); overflow: hidden;">
-        <div style="padding: 20px; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center;">
-            <h4 style="margin: 0; color: #1e293b;">Detalle de Transacciones</h4>
-            <input type="text" placeholder="Buscar por casa o nombre..." 
-                   style="padding: 8px 15px; border-radius: 8px; border: 1px solid #e2e8f0; width: 250px;">
-        </div>
-        
         <div style="overflow-x: auto;">
             <table style="width: 100%; border-collapse: collapse; text-align: left;">
                 <thead>
                     <tr style="background: #f8fafc;">
-                        <th style="padding: 15px; color: #64748b; font-size: 0.85rem; font-weight: bold;">ID</th>
                         <th style="padding: 15px; color: #64748b; font-size: 0.85rem; font-weight: bold;">FECHA</th>
                         <th style="padding: 15px; color: #64748b; font-size: 0.85rem; font-weight: bold;">CASA / PROPIETARIO</th>
-                        <th style="padding: 15px; color: #64748b; font-size: 0.85rem; font-weight: bold;">CONCEPTO</th>
+                        <th style="padding: 15px; color: #64748b; font-size: 0.85rem; font-weight: bold;">NOTA</th>
                         <th style="padding: 15px; color: #64748b; font-size: 0.85rem; font-weight: bold; text-align: right;">MONTO</th>
                         <th style="padding: 15px; color: #64748b; font-size: 0.85rem; font-weight: bold; text-align: center;">ACCIONES</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for pago in pagos %}
-                    <tr style="border-bottom: 1px solid #f1f5f9; transition: 0.2s;" onmouseover="this.style.backgroundColor='#f8fafc'" onmouseout="this.style.backgroundColor='transparent'">
-                        <td style="padding: 15px; color: #94a3b8; font-size: 0.85rem;">#{{ pago.id }}</td>
-                        <td style="padding: 15px; color: #1e293b; font-size: 0.9rem;">{{ pago.fecha.strftime('%d/%m/%Y') }}</td>
+                    <tr style="border-bottom: 1px solid #f1f5f9;">
+                        <td style="padding: 15px; color: #1e293b;">{{ pago.fecha.strftime('%d/%m/%Y') }}</td>
                         <td style="padding: 15px;">
                             <div style="font-weight: bold; color: #1e293b;">Casa {{ pago.casa.numero_casa }}</div>
                             <div style="font-size: 0.8rem; color: #64748b;">{{ pago.casa.dueno_nombre }}</div>
                         </td>
-                        <td style="padding: 15px; color: #475569; font-size: 0.9rem;">{{ pago.concepto or 'Alícuota Mensual' }}</td>
-                        <td style="padding: 15px; text-align: right; font-weight: bold; color: #10b981; font-size: 1rem;">
+                        <td style="padding: 15px; color: #475569;">{{ pago.nota or 'Alícuota' }}</td>
+                        <td style="padding: 15px; text-align: right; font-weight: bold; color: #10b981;">
                             ${{ "{:,.2f}".format(pago.monto) }}
                         </td>
                         <td style="padding: 15px; text-align: center;">
-                            <a href="{{ url_for('descargar_recibo', pago_id=pago.id) }}" 
-                               style="color: #3b82f6; text-decoration: none; font-size: 1.2rem;" title="Descargar Recibo">
+                            <a href="{{ url_for('descargar_recibo', pago_id=pago.id) }}" title="Recibo PDF" style="text-decoration: none;">
                                 📄
                             </a>
                         </td>
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="6" style="padding: 30px; text-align: center; color: #94a3b8;">No se han encontrado registros de pagos.</td>
+                        <td colspan="5" style="padding: 40px; text-align: center; color: #94a3b8;">
+                            No se encontraron pagos con el criterio: "<strong>{{ busqueda }}</strong>"
+                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>

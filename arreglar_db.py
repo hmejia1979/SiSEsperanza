@@ -1,9 +1,10 @@
-# Crea un archivo llamado "arreglar_db.py" y ejecútalo una vez
 from app import app, db
-from sqlalchemy import text
 
 with app.app_context():
-    with db.engine.connect() as conn:
-        conn.execute(text("ALTER TABLE pagos ADD COLUMN nota VARCHAR(200)"))
-        conn.commit()
-    print("✅ Columna 'nota' agregada con éxito.")
+    try:
+        # Esto añade la columna directamente a tu base de datos de PostgreSQL
+        db.session.execute(db.text('ALTER TABLE casas ADD COLUMN deuda_anterior FLOAT DEFAULT 0.0;'))
+        db.session.commit()
+        print("✅ Columna 'deuda_anterior' añadida con éxito.")
+    except Exception as e:
+        print(f"❌ Error o la columna ya existía: {e}")

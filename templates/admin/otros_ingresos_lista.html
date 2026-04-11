@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="fw-bold text-dark mb-1">🏢 Otros Ingresos</h2>
+            <p class="text-muted">Registro de alquileres de local, cancha y extras.</p>
+        </div>
+        <a href="{{ url_for('nuevo_ingreso_extra') }}" class="btn btn-primary shadow-sm" style="border-radius: 10px;">
+            <i class="fas fa-plus-circle me-2"></i>Registrar Nuevo
+        </a>
+    </div>
+
+    <div class="card border-0 shadow-sm" style="border-radius: 15px; overflow: hidden;">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="bg-light">
+                    <tr>
+                        <th class="ps-4">Fecha</th>
+                        <th>Categoría</th>
+                        <th>Concepto / Detalle</th>
+                        <th>Monto</th>
+                        <th class="text-end pe-4">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for i in ingresos %}
+                    <tr>
+                        <td class="ps-4">{{ i.fecha.strftime('%d/%m/%Y') }}</td>
+                        <td>
+                            <span class="badge rounded-pill bg-info text-dark px-3">
+                                {{ i.categoria }}
+                            </span>
+                        </td>
+                        <td class="text-muted">{{ i.concepto }}</td>
+                        <td><span class="fw-bold text-success">${{ "{:,.2f}".format(i.monto) }}</span></td>
+                        <td class="text-end pe-4">
+                            <form action="{{ url_for('eliminar_ingreso_extra', id=i.id) }}" method="POST" onsubmit="return confirm('¿Eliminar este registro?');">
+                                <button type="submit" class="btn btn-sm btn-outline-danger border-0">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="text-center py-5 text-muted">
+                            No hay ingresos extras registrados todavía.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

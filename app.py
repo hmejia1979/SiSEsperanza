@@ -15,9 +15,10 @@ from reportlab.lib import colors
 from reportlab.lib.units import mm
 from fpdf import FPDF
 from flask_mail import Mail, Message
-from models import db, Usuario, Casa, Pago, Gasto, Configuracion, Deuda
-
+from models import db, Usuario, Casa, Pago, Gasto, Configuracion, Deuda, IngresoExtra
+from openpyxl.drawing.image import Image
 import json
+from openpyxl.styles import Font, Alignment
 load_dotenv()
 
 UMBRAL_ALERTA_CAJA = 30.00  # Se activa si hay menos de $30
@@ -65,15 +66,15 @@ scheduler.start()
 @login_required
 def detalle_casa(id):
     casa = Casa.query.get_or_404(id)
-    # Traemos las deudas de esta casa
+    # Importante: casa.deuda_anterior ya vive dentro del objeto casa
     deudas = Deuda.query.filter_by(casa_id=id).all()
-    # Traemos los pagos realizados por esta casa
     pagos = Pago.query.filter_by(casa_id=id).all()
     
     return render_template('admin/detalle_casa.html', 
                            casa=casa, 
                            deudas=deudas, 
                            pagos=pagos)
+
 
 def registrar_pago_y_saldar_deuda(casa_id, monto_pagado, nota):
     # 1. Crear el registro del pago para el historial
@@ -169,73 +170,98 @@ def confirmar_pago_meses(casa_id):
     if current_user.rol != 'admin':
         return redirect(url_for('inicio'))
 
-    # Obtenemos la lista de deudas marcadas en los checkboxes
+    casa = db.get_or_404(Casa, casa_id)
     deuda_ids = request.form.getlist('deuda_ids')
+    monto_abono = request.form.get('monto_abono') 
     metodo = request.form.get('metodo')
-
-    if not deuda_ids:
-        flash("❌ No seleccionaste ningún mes para pagar.", "warning")
-        return redirect(request.referrer)
+    
+    # Variable para capturar el ID del pago y generar el recibo al final
+    ultimo_pago_id = None
 
     try:
-        casa = Casa.query.get_or_404(casa_id)
-        
-        for d_id in deuda_ids:
-            deuda = Deuda.query.get(d_id)
-            if deuda and not deuda.pagado:
-                # 1. Marcamos la deuda como pagada
-                deuda.pagado = True
+       
+        if monto_abono:
+            valor_abono = float(monto_abono)
+            if valor_abono > 0:
+                casa.deuda_anterior -= valor_abono 
                 
-                # 2. Creamos el registro del pago para el historial/recibo
+                pago_abono = Pago(
+                    monto=valor_abono,
+                    casa_id=casa.id,
+                    fecha=datetime.now(),
+                    # CAMBIA ESTO:
+                    nota=f"Pago de deuda anterior ({metodo})" 
+                )
+                db.session.add(pago_abono)
+                db.session.flush()
+                ultimo_pago_id = pago_abono.id
+        # --- 2. PROCESAR MESES SELECCIONADOS (2026) ---
+        for d_id in deuda_ids:
+            deuda = db.session.get(Deuda, int(d_id))
+            
+            if deuda and not deuda.pagado:
+                deuda.pagado = True
+                deuda.fecha_pago = datetime.now()
+                
                 nuevo_pago = Pago(
                     monto=deuda.monto,
                     casa_id=casa.id,
                     deuda_id=deuda.id,
-                    # concepto=f"Pago mes {deuda.nombre_mes} - {metodo}" # Si tienes campo concepto
+                    fecha=datetime.now(),
+                    nota=f"Pago mes {deuda.mes}/{deuda.anio} ({metodo})"
                 )
                 db.session.add(nuevo_pago)
+                db.session.flush()
+                ultimo_pago_id = nuevo_pago.id
 
-        # --- EL PASO MÁGICO QUE TE FALTA ---
-        # Forzamos que la base de datos reconozca los pagos antes de sumar
-        db.session.flush() 
-
-        # Recalculamos el saldo total sumando solo lo que quedó pendiente (IGUAL QUE TU BOTÓN)
-        nuevo_saldo = db.session.query(db.func.sum(Deuda.monto)).filter(
+        # --- 3. RECALCULAR SALDO TOTAL FINAL ---
+        nuevo_saldo_meses = db.session.query(func.sum(Deuda.monto)).filter(
             Deuda.casa_id == casa.id,
             Deuda.pagado == False
         ).scalar() or 0.0
         
-        casa.saldo_total = float(nuevo_saldo)
+        casa.saldo_total = float(nuevo_saldo_meses) + float(casa.deuda_anterior)
 
         db.session.commit()
-        flash(f"✅ ¡Pago procesado! El saldo de la casa se actualizó automáticamente.", "success")
+        flash("✅ ¡Pago procesado con éxito!", "success")
+
+        # Si hubo un pago (ya sea deuda anterior o mes), redirigir al recibo
+        if ultimo_pago_id:
+            return redirect(url_for('descargar_recibo', pago_id=ultimo_pago_id))
 
     except Exception as e:
         db.session.rollback()
-        flash(f"Error técnico: {str(e)}", "danger")
+        flash(f"❌ Error técnico: {str(e)}", "danger")
 
     return redirect(url_for('detalle_casa', id=casa_id))
-
 
 @app.route('/inicio')
 @login_required
 def inicio():
     # --- 1. DATOS GLOBALES (Calculados para ambos roles) ---
-    ingresos_totales = db.session.query(db.func.sum(Pago.monto)).scalar() or 0.0
+    # Sumamos los pagos de alícuotas (tabla Pago)
+    ingresos_alicuotas = db.session.query(db.func.sum(Pago.monto)).scalar() or 0.0
+    
+    # Sumamos los ingresos extras (tabla IngresoExtra)
+    ingresos_extras = db.session.query(db.func.sum(IngresoExtra.monto)).scalar() or 0.0
+    
+    # Ingresos totales = Alícuotas + Extras
+    ingresos_totales = ingresos_alicuotas + ingresos_extras
+    
+    # Gastos totales
     gastos_totales = db.session.query(db.func.sum(Gasto.monto)).scalar() or 0.0
+    
+    # Saldo real en caja
     saldo_en_caja = ingresos_totales - gastos_totales
 
     # --- 2. VISTA PARA ADMINISTRADOR ---
     if current_user.rol == 'admin':
-        # Métricas para los cuadros superiores
         total_casas = Casa.query.count()
         casas_mora_count = Casa.query.filter(Casa.saldo_total > 0).count()
         casas_al_dia_count = total_casas - casas_mora_count
         
-        # Datos para el gráfico de Donas (Mora vs Al Día)
         datos_mora = [casas_al_dia_count, casas_mora_count]
 
-        # Datos para el gráfico de Gastos por Categoría
         gastos_por_categoria = db.session.query(
             Gasto.categoria, db.func.sum(Gasto.monto)
         ).group_by(Gasto.categoria).all()
@@ -243,7 +269,7 @@ def inicio():
         labels_gastos = [cat if cat else "Sin Categoría" for cat, monto in gastos_por_categoria]
         valores_gastos = [float(monto) for cat, monto in gastos_por_categoria]
 
-        # Lista de pagos para la tabla de "Recientes"
+        # Para el admin, mostramos los últimos movimientos de alícuotas
         ultimos_pagos_admin = Pago.query.order_by(Pago.id.desc()).limit(5).all()
         
         return render_template('admin/inicio_admin.html', 
@@ -260,25 +286,30 @@ def inicio():
 
     # --- 3. VISTA PARA DUEÑO (Propietario) ---
     else:
-        # Buscamos la casa vinculada al usuario logueado
+        # Buscamos la casa vinculada al usuario actual
         casa_dueno = Casa.query.filter_by(usuario_id=current_user.id).first()
-        
-        # Obtenemos los pagos de este dueño específico
         mis_pagos = []
         saldo_p = 0.0
+        
         if casa_dueno:
+            # Sus últimos 5 pagos personales
             mis_pagos = Pago.query.filter_by(casa_id=casa_dueno.id).order_by(Pago.fecha.desc()).limit(5).all()
             saldo_p = casa_dueno.saldo_total or 0.0
         
-        # Gastos de la comunidad (lo que ve el dueño en su panel)
+        # --- LISTADO DE MOROSOS (Transparencia para el conjunto) ---
+        # Traemos todas las casas que deben, ordenadas de mayor a menor deuda
+        lista_morosos = Casa.query.filter(Casa.saldo_total > 0).order_by(Casa.saldo_total.desc()).all()
+        
+        # Últimos 5 gastos de la comunidad para que vean en qué se usa el dinero
         ultimos_gastos = Gasto.query.order_by(Gasto.fecha.desc()).limit(5).all()
         
         return render_template('inicio_dueno.html', 
                                saldo_pendiente=saldo_p, 
                                saldo_caja=saldo_en_caja, 
                                pagos=mis_pagos, 
-                               gastos_comunidad=ultimos_gastos)
-        
+                               gastos_comunidad=ultimos_gastos,
+                               lista_morosos=lista_morosos)
+
 @app.route('/admin/configuracion', methods=['GET', 'POST'])
 @login_required
 def configuracion():
@@ -384,66 +415,21 @@ def logout():
     return redirect(url_for('login'))
 
 
-@app.route('/admin/registrar-pago', methods=['GET', 'POST'])
+@app.route('/admin/registrar-pago/<int:casa_id>', methods=['GET'])
 @login_required
-def registrar_pago():
+def registrar_pago(casa_id):
     if current_user.rol != 'admin':
         return redirect(url_for('inicio'))
 
-    if request.method == 'POST':
-        try:
-            # 1. Obtener datos y asegurar que son números
-            c_id = int(request.form.get('casa_id'))
-            monto_pago = float(request.form.get('monto'))
-            
-            casa = Casa.query.get(c_id)
-            if not casa:
-                flash("Casa no encontrada", "danger")
-                return redirect(url_for('registrar_pago'))
+    # Buscamos la casa específica por su ID
+    casa = db.session.get(Casa, casa_id)
+    
+    if not casa:
+        flash("Casa no encontrada", "danger")
+        return redirect(url_for('lista_casas'))
 
-            # 2. CREAR EL REGISTRO DE PAGO PRIMERO
-            nuevo_pago = Pago(monto=monto_pago, casa_id=casa.id)
-            db.session.add(nuevo_pago)
-
-            # 3. LÓGICA DE ACTUALIZACIÓN DE DEUDAS (IGUAL QUE EL BOTÓN)
-            # Buscamos todas las deudas NO pagadas de esta casa
-            deudas_pendientes = Deuda.query.filter_by(casa_id=casa.id, pagado=False)\
-                                           .order_by(Deuda.anio.asc(), Deuda.mes.asc()).all()
-
-            saldo_disponible = monto_pago
-            for deuda in deudas_pendientes:
-                # Usamos un margen de 0.01 para evitar errores de centavos en la DB
-                if saldo_disponible >= (deuda.monto - 0.01):
-                    deuda.pagado = True
-                    saldo_disponible -= deuda.monto
-                else:
-                    break
-
-            # 4. FORZAR EL RECALCULO DEL SALDO (Copiado de tu función 'recalcular_saldos')
-            db.session.flush() # Sincroniza los estados de 'pagado=True' antes de sumar
-            
-            total_pendiente = db.session.query(db.func.sum(Deuda.monto)).filter(
-                Deuda.casa_id == casa.id,
-                Deuda.pagado == False
-            ).scalar() or 0.0
-            
-            casa.saldo_total = float(total_pendiente)
-
-            # 5. GUARDAR TODO
-            db.session.commit()
-            flash(f"✅ ¡Sincronizado! Pago de ${monto_pago} aplicado correctamente.", "success")
-            
-        except Exception as e:
-            db.session.rollback()
-            flash(f"Error: {str(e)}", "danger")
-        
-        return redirect(url_for('pagos_globales'))
-
-    # Lógica para mostrar la página (GET)
-    casas = Casa.query.order_by(Casa.numero_casa.asc()).all()
-    pagos_recientes = Pago.query.order_by(Pago.id.desc()).limit(10).all()
-    return render_template('admin/registrar_pago.html', casas=casas, pagos_recientes=pagos_recientes)
-
+    # Renderizamos el template pasando el objeto 'casa' que el HTML necesita
+    return render_template('admin/registrar_pago.html', casa=casa)
 
 @app.route('/admin/descargar-reporte-deudas')
 @login_required
@@ -506,27 +492,26 @@ def iniciar_nuevo_anio():
 
 @app.route('/admin/recibo/<int:pago_id>')
 @login_required
-def generar_recibo(pago_id):
+def descargar_recibo(pago_id):
     pago = Pago.query.get_or_404(pago_id)
     casa = Casa.query.get(pago.casa_id)
     
-    # Cálculo del saldo pendiente
-    saldo_pendiente = db.session.query(db.func.sum(Deuda.monto)).filter(
+    # Cálculo del saldo pendiente (Alícuotas 2026 + Deuda Anterior)
+    saldo_pendiente_meses = db.session.query(db.func.sum(Deuda.monto)).filter(
         Deuda.casa_id == casa.id,
         Deuda.pagado == False
     ).scalar() or 0.0
+    total_pendiente = float(saldo_pendiente_meses) + float(casa.deuda_anterior or 0)
 
     buffer = io.BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4)
     
-    # Definimos la función interna con coordenadas bajitas (0 a 140mm)
     def dibujar_recibo(c, tipo_copia):
-        # 1. Logo (Esquina superior izquierda del bloque)
+        # --- LOGO Y ENCABEZADO ---
         logo_path = os.path.join(app.root_path, 'static', 'img', 'logoEsperanza.png')
         if os.path.exists(logo_path):
             c.drawImage(logo_path, 15*mm, 115*mm, width=20*mm, height=20*mm, preserveAspectRatio=True)
 
-        # 2. Encabezado
         c.setFont("Helvetica-Bold", 14)
         c.setFillColor(colors.darkblue)
         c.drawString(40*mm, 125*mm, "SISEsperanza")
@@ -535,26 +520,25 @@ def generar_recibo(pago_id):
         c.setFillColor(colors.grey)
         c.drawRightString(195*mm, 125*mm, tipo_copia)
 
-        # 3. Datos del Recibo
+        # --- DATOS BÁSICOS ---
         c.setFillColor(colors.black)
         c.setFont("Helvetica-Bold", 10)
         c.drawString(15*mm, 105*mm, f"RECIBO N°: {pago.id:06d}")
         c.drawRightString(195*mm, 105*mm, f"FECHA: {pago.fecha.strftime('%d/%m/%Y')}")
 
-        # 4. Cuadro del Socio
-        c.setStrokeColor(colors.black)
-        c.setLineWidth(0.5)
+        # --- CUADRO DEL SOCIO ---
         c.rect(15*mm, 85*mm, 180*mm, 15*mm, stroke=1, fill=0)
-        
         c.setFont("Helvetica", 9)
         c.drawString(18*mm, 95*mm, f"PROPIETARIO: {casa.dueno_nombre}")
         c.drawString(18*mm, 88*mm, f"CASA / VILLA: {casa.numero_casa}")
 
-        # 5. Concepto y Pago
+        # --- CONCEPTO DINÁMICO (AQUÍ ESTÁ LA CORRECCIÓN) ---
         c.setFont("Helvetica-Bold", 10)
-        c.drawString(15*mm, 75*mm, "CONCEPTO: Pago de alícuota mensual")
+        # Si el pago tiene nota, la usa. Si no, pone el default.
+        texto_concepto = pago.nota if pago.nota else "Pago de alícuota mensual"
+        c.drawString(15*mm, 75*mm, f"CONCEPTO: {texto_concepto}")
 
-        # Cuadro de TOTAL
+        # --- CUADRO DE TOTAL ---
         c.setFillColor(colors.black)
         c.rect(145*mm, 68*mm, 50*mm, 10*mm, fill=1)
         c.setFillColor(colors.white)
@@ -562,59 +546,57 @@ def generar_recibo(pago_id):
         c.drawString(148*mm, 71*mm, "PAGADO:")
         c.drawRightString(192*mm, 71*mm, f"${'{:,.2f}'.format(pago.monto)}")
 
-        # 6. Saldo Pendiente (LO QUE PEDISTE)
+        # --- SALDO PENDIENTE ---
         c.setFillColor(colors.black)
-        if saldo_pendiente > 0:
+        if total_pendiente > 0:
             c.setFont("Helvetica-Bold", 10)
-            c.drawString(15*mm, 60*mm, f"SALDO PENDIENTE: ${'{:,.2f}'.format(saldo_pendiente)}")
+            c.drawString(15*mm, 60*mm, f"SALDO PENDIENTE TOTAL: ${'{:,.2f}'.format(total_pendiente)}")
         else:
             c.setFont("Helvetica-Bold", 10)
             c.drawString(15*mm, 60*mm, "ESTADO DE CUENTA: AL DÍA")
 
-        # 7. Firma
-        c.setFillColor(colors.black)
+        # --- FIRMA ---
         c.line(70*mm, 25*mm, 140*mm, 25*mm)
         c.setFont("Helvetica-Oblique", 8)
         c.drawCentredString(105*mm, 20*mm, "Firma Autorizada")
 
-    # --- DIBUJO EN LA HOJA A4 ---
-
-    # Primero el de arriba (Original)
+    # Dibujar las dos copias en la misma hoja
     p.saveState()
-    p.translate(0, 148.5*mm) # Subimos a la mitad superior
+    p.translate(0, 148.5*mm) 
     dibujar_recibo(p, "ORIGINAL - SOCIO")
     p.restoreState()
 
-    # Línea de corte
     p.setDash([3, 6])
-    p.setStrokeColor(colors.grey)
     p.line(0, 148.5*mm, 210*mm, 148.5*mm)
     p.setDash([])
 
-    # Segundo el de abajo (Copia)
-    p.saveState()
-    # No necesitamos translate aquí porque el 0,0 es el fondo de la hoja
     dibujar_recibo(p, "COPIA - ADMINISTRACIÓN")
-    p.restoreState()
-
+    
     p.showPage()
     p.save()
     buffer.seek(0)
     return send_file(buffer, as_attachment=True, download_name=f"Recibo_{pago.id}.pdf", mimetype='application/pdf')
 
-
 def generar_recibo_pdf(pago, casa):
     buffer = BytesIO()
     p = canvas.Canvas(buffer, pagesize=letter)
     
-    # Diseño del Recibo
+    # --- Cálculo de Saldo Pendiente ---
+    saldo_restante = db.session.query(db.func.sum(Deuda.monto)).filter(
+        Deuda.casa_id == casa.id,
+        Deuda.pagado == False
+    ).scalar() or 0.0
+    total_pendiente = float(saldo_restante) + float(casa.deuda_anterior or 0)
+
+    # --- Diseño del Recibo ---
     p.setFont("Helvetica-Bold", 16)
     p.drawString(100, 750, "🏘️ SiSEsperanza - Comprobante de Pago")
     
-    p.setFont("Helvetica", 12)
+    p.setLineWidth(1)
     p.line(100, 740, 500, 740)
     
-    p.drawString(100, 710, f"Recibo N°: 000{pago.id}")
+    p.setFont("Helvetica", 12)
+    p.drawString(100, 710, f"Recibo N°: {pago.id:06d}")
     p.drawString(100, 690, f"Fecha: {pago.fecha.strftime('%d/%m/%Y')}")
     
     p.setFont("Helvetica-Bold", 12)
@@ -623,12 +605,27 @@ def generar_recibo_pdf(pago, casa):
     p.drawString(100, 630, f"Nombre: {casa.dueno_nombre}")
     p.drawString(100, 610, f"Casa N°: {casa.numero_casa}")
     
-    p.setFont("Helvetica-Bold", 14)
-    p.drawString(100, 560, f"MONTO PAGADO: ${pago.monto}")
+    # --- DETALLE DEL PAGO (CORREGIDO) ---
+    p.setFont("Helvetica-Bold", 12)
+    p.drawString(100, 570, "DETALLE DEL PAGO:")
+    p.setFont("Helvetica", 12)
     
+    # Aquí está el truco: usamos pago.nota que viene de la DB
+    texto_concepto = pago.nota if pago.nota else "Pago de alícuota mensual"
+    p.drawString(100, 550, f"Concepto: {texto_concepto}")
+    
+    p.setFont("Helvetica-Bold", 14)
+    p.setFillColorRGB(0, 0.5, 0) 
+    p.drawString(100, 520, f"MONTO PAGADO: ${'{:,.2f}'.format(pago.monto)}")
+    
+    p.setFillColorRGB(0, 0, 0)
+    p.setFont("Helvetica-Bold", 11)
+    p.drawString(100, 490, f"SALDO PENDIENTE TOTAL: ${'{:,.2f}'.format(total_pendiente)}")
+
+    p.line(100, 470, 500, 470)
     p.setFont("Helvetica-Oblique", 10)
-    p.drawString(100, 500, "Este documento sirve como soporte legal de su pago mensual.")
-    p.drawString(100, 485, "Gracias por mantener sus cuotas al día.")
+    p.drawString(100, 450, "Este documento sirve como soporte legal de su pago.")
+    p.drawString(100, 435, "Gracias por su contribución al mantenimiento del conjunto.")
     
     p.showPage()
     p.save()
@@ -639,18 +636,40 @@ def generar_recibo_pdf(pago, casa):
 @app.route('/admin/registrar-casa', methods=['GET', 'POST'])
 @login_required
 def registrar_casa():
+    if current_user.rol != 'admin':
+        return redirect(url_for('inicio'))
+
     if request.method == 'POST':
-        # ... (aquí va tu lógica de guardado que ya definimos antes) ...
-        num = request.form.get('numero_casa')
-        nombre = request.form.get('propietario')
-        deuda = request.form.get('deuda_inicial') or 0
-        
-        nueva = Casa(numero_casa=num, dueno_nombre=nombre, saldo_total=float(deuda))
-        db.session.add(nueva)
-        db.session.commit()
-        flash("Casa creada con éxito", "success")
-        return redirect(url_for('lista_casas'))
-    
+        try:
+            num = request.form.get('numero_casa')
+            nombre = request.form.get('dueno_nombre')
+            # Capturamos la deuda de años anteriores (2025 hacia atrás)
+            deuda_inicial = float(request.form.get('deuda_anterior') or 0.0)
+
+            # Verificamos si la casa ya existe
+            existe = Casa.query.filter_by(numero_casa=num).first()
+            if existe:
+                flash(f"⚠️ La casa {num} ya está registrada.", "warning")
+                return redirect(url_for('registrar_casa'))
+
+            # Creamos la nueva casa
+            nueva_casa = Casa(
+                numero_casa=num,
+                dueno_nombre=nombre,
+                deuda_anterior=deuda_inicial, # Saldo persistente de 2025
+                saldo_total=deuda_inicial      # El total inicial (se irá sumando con los meses 2026)
+            )
+
+            db.session.add(nueva_casa)
+            db.session.commit()
+            
+            flash(f"✅ Casa {num} registrada con éxito.", "success")
+            return redirect(url_for('inicio'))
+
+        except Exception as e:
+            db.session.rollback()
+            flash(f"❌ Error al registrar: {str(e)}", "danger")
+
     return render_template('admin/registrar_casa.html')
 
 @app.route('/admin/generar-mensualidad', methods=['POST'])
@@ -699,7 +718,13 @@ def generar_alicuotas():
         
         if casa.saldo_total is None:
             casa.saldo_total = 0.0
-        casa.saldo_total += monto_cuota
+    
+      
+        saldo_meses_pendientes = db.session.query(db.func.sum(Deuda.monto)).filter(
+            Deuda.casa_id == casa.id, Deuda.pagado == False
+        ).scalar() or 0.0
+        
+        casa.saldo_total = float(saldo_meses_pendientes) + float(casa.deuda_anterior or 0)
 
     db.session.commit()
     flash(f"✅ Alícuotas de {seleccion} generadas por ${monto_cuota}", "success")
@@ -710,17 +735,18 @@ def generar_alicuotas():
 def buscar_pagos():
     query = request.args.get('q', '')
     
-    # Usamos db.session.query para traer AMBOS objetos (Deuda y Casa)
+    # Buscamos el pago relacionado para poder descargar el recibo
     if query:
-        resultados = db.session.query(Deuda, Casa).join(Casa).filter(
-            Deuda.pagado == True,
+        # Unimos Pago con Casa para la búsqueda
+        resultados = db.session.query(Pago, Casa).join(Casa).filter(
             db.or_(
                 Casa.dueno_nombre.ilike(f'%{query}%'),
-                Casa.numero_casa.ilike(f'%{query}%')
+                Casa.numero_casa.ilike(f'%{query}%'),
+                Pago.nota.ilike(f'%{query}%')
             )
-        ).all()
+        ).order_by(Pago.fecha.desc()).all()
     else:
-        resultados = db.session.query(Deuda, Casa).join(Casa).filter(Deuda.pagado == True).limit(20).all()
+        resultados = db.session.query(Pago, Casa).join(Casa).order_by(Pago.fecha.desc()).limit(20).all()
     
     return render_template('admin/buscar_pagos.html', resultados=resultados, query=query)
 
@@ -1068,15 +1094,29 @@ def enviar_avisos_correo():
 def pagos_globales():
     if current_user.rol != 'admin':
         return redirect(url_for('inicio'))
+    
+    # Capturamos el término de búsqueda del input 'q'
+    query = request.args.get('q', '')
 
-    todos_los_pagos = Pago.query.order_by(Pago.id.desc()).all()
-    total_recaudado = sum(pago.monto for pago in todos_los_pagos)
+    if query:
+        # Filtramos por número de casa, nombre del dueño o nota del pago
+        pagos = db.session.query(Pago).join(Casa).filter(
+            or_(
+                Casa.numero_casa.ilike(f'%{query}%'),
+                Casa.dueno_nombre.ilike(f'%{query}%'),
+                Pago.nota.ilike(f'%{query}%')
+            )
+        ).order_by(Pago.fecha.desc()).all()
+    else:
+        # Si no hay búsqueda, mostramos todos los pagos
+        pagos = Pago.query.order_by(Pago.fecha.desc()).all()
 
-    # Enviamos la fecha actual para el encabezado del reporte
+    total_recaudado = sum(p.monto for p in pagos)
+    
     return render_template('admin/pagos_globales.html', 
-                           pagos=todos_los_pagos, 
-                           total=total_recaudado,
-                           current_time=datetime.now())
+                           pagos=pagos, 
+                           total=total_recaudado, 
+                           busqueda=query)
 
 
 @app.route('/admin/editar-casa/<int:id>', methods=['GET', 'POST'])
@@ -1084,21 +1124,38 @@ def pagos_globales():
 def editar_casa(id):
     if current_user.rol != 'admin':
         return redirect(url_for('inicio'))
+
+    casa = db.session.get(Casa, id)
     
-    casa = Casa.query.get_or_404(id)
-    
+    if not casa:
+        flash("❌ Casa no encontrada", "danger")
+        return redirect(url_for('lista_casas'))
+
     if request.method == 'POST':
-        casa.numero_casa = request.form.get('numero_casa')
-        casa.dueno_nombre = request.form.get('propietario')
-        casa.saldo_total = float(request.form.get('saldo_total') or 0)
-        
         try:
+            # 1. Actualizamos solo los campos existentes
+            casa.numero_casa = request.form.get('numero_casa')
+            casa.dueno_nombre = request.form.get('dueno_nombre')
+            
+            # 2. Capturamos la deuda anterior
+            deuda_ant_nueva = float(request.form.get('deuda_anterior') or 0)
+            casa.deuda_anterior = deuda_ant_nueva
+            
+            # 3. Recalculamos el saldo total (Meses 2026 + Deuda 2025)
+            meses_pendientes = db.session.query(db.func.sum(Deuda.monto)).filter(
+                Deuda.casa_id == casa.id,
+                Deuda.pagado == False
+            ).scalar() or 0.0
+            
+            casa.saldo_total = float(meses_pendientes) + float(casa.deuda_anterior)
+
             db.session.commit()
-            flash(f"✅ Casa {casa.numero_casa} actualizada correctamente", "success")
+            flash(f"✅ Casa {casa.numero_casa} actualizada correctamente.", "success")
             return redirect(url_for('lista_casas'))
+            
         except Exception as e:
             db.session.rollback()
-            flash(f"Error al actualizar: {str(e)}", "danger")
+            flash(f"❌ Error al actualizar: {str(e)}", "danger")
 
     return render_template('admin/editar_casa.html', casa=casa)
 
@@ -1254,38 +1311,37 @@ def reporte_general():
     return render_template('admin/reporte.html', total=total_recaudado, casas=casas)
 
 
-@app.route('/admin/registrar-otros-ingresos', methods=['GET', 'POST'])
+@app.route('/admin/otros-ingresos/nuevo', methods=['GET', 'POST'])
 @login_required
-def registrar_otros_ingresos():
+def nuevo_ingreso_extra():
     if current_user.rol != 'admin':
         return redirect(url_for('inicio'))
 
     if request.method == 'POST':
-        concepto = request.form.get('concepto')  # Ej: "Alquiler de Local"
-        monto = float(request.form.get('monto'))
-        fecha_str = request.form.get('fecha')
-        fecha = datetime.strptime(fecha_str, '%Y-%m-%d')
-
-        # Creamos un registro en la tabla Pago, pero sin casa_id
-        # (Asegúrate de que tu modelo Pago permita casa_id=None o usa una tabla nueva)
-        nuevo_ingreso = Pago(
-            monto=monto,
-            fecha=fecha,
-            nota=f"OTROS INGRESOS: {concepto}",
-            casa_id=None  # Esto indica que es ingreso general del conjunto
-        )
-
         try:
-            db.session.add(nuevo_ingreso)
+            monto = float(request.form.get('monto'))
+            concepto = request.form.get('concepto')
+            categoria = request.form.get('categoria')
+            fecha_str = request.form.get('fecha')
+            fecha = datetime.strptime(fecha_str, '%Y-%m-%d')
+
+            # USAMOS EL NUEVO MODELO IngresoExtra 1
+            nuevo = IngresoExtra(
+                monto=monto,
+                concepto=concepto,
+                categoria=categoria,
+                fecha=fecha
+            )
+
+            db.session.add(nuevo)
             db.session.commit()
-            flash(f"✅ Ingreso por '{concepto}' registrado correctamente", "success")
-            return redirect(url_for('inicio'))
+            flash(f"✅ {categoria} registrado correctamente", "success")
+            return redirect(url_for('lista_otros_ingresos'))
         except Exception as e:
             db.session.rollback()
             flash(f"Error al registrar: {str(e)}", "danger")
 
-    return render_template('admin/registrar_otros_ingresos.html')
-
+    return render_template('admin/otros_ingresos_form.html', hoy=datetime.now().strftime('%Y-%m-%d'))
 
 @app.route('/admin/reportes')
 @login_required
@@ -1323,7 +1379,187 @@ def vista_reportes():
                            deuda_pendiente=deuda_db,
                            casas_con_deuda=casas_con_mora) # <--- Asegúrate que este nombre coincida con el HTML
 
-# --- SCRIPT DE EMERGENCIA PARA RENOMBRAR ---
+
+@app.route('/admin/otros-ingresos')
+@login_required
+def lista_otros_ingresos():
+    ingresos = IngresoExtra.query.order_by(IngresoExtra.fecha.desc()).all()
+    return render_template('admin/otros_ingresos_lista.html', ingresos=ingresos)
+
+
+@app.route('/admin/otros-ingresos/eliminar/<int:id>', methods=['POST'])
+@login_required
+def eliminar_ingreso_extra(id):
+    ingreso = IngresoExtra.query.get_or_404(id)
+    db.session.delete(ingreso)
+    db.session.commit()
+    flash("🗑️ Registro eliminado", "warning")
+    return redirect(url_for('lista_otros_ingresos'))
+
+@app.route('/admin/reporte-anual-excel')
+@login_required
+def reporte_anual_excel():
+    if current_user.rol != 'admin':
+        return redirect(url_for('inicio'))
+
+    casas = Casa.query.order_by(Casa.numero_casa).all()
+    anio_actual = datetime.now().year
+    
+    datos = []
+    for c in casas:
+        # Calculamos cuánto pagó en el año
+        total_pagado_anio = db.session.query(func.sum(Pago.monto)).filter(
+            Pago.casa_id == c.id,
+            func.extract('year', Pago.fecha) == anio_actual
+        ).scalar() or 0.0
+
+        datos.append({
+            "Casa": c.numero_casa,
+            "Propietario": c.dueno_nombre,
+            "Deuda Inicial (Ene 1)": c.deuda_anterior,
+            "Total Pagado en el Año": total_pagado_anio,
+            "Saldo Pendiente Actual": c.saldo_total,
+            "Estado": "AL DÍA" if c.saldo_total <= 0 else "MOROSO"
+        })
+
+    df = pd.DataFrame(datos)
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name=f'Cierre Anual {anio_actual}')
+    
+    output.seek(0)
+    return send_file(
+        output,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=f"Cierre_Anual_{anio_actual}_SiSE.xlsx"
+    )
+
+# --- REPORTE: MATRIZ MENSUAL EN EXCEL ---
+@app.route('/admin/reporte-matriz-anual')
+@login_required
+def reporte_matriz_anual():
+    if current_user.rol != 'admin':
+        return redirect(url_for('inicio'))
+
+    anio_actual = datetime.now().year
+    # Consultamos las casas y sus pagos del año actual
+    casas = Casa.query.order_by(Casa.numero_casa).all()
+    meses_nombres = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+
+    matriz_datos = []
+    for casa in casas:
+        fila = {"Casa": casa.numero_casa, "Propietario": casa.dueno_nombre}
+        
+        # Obtenemos los meses que ya tienen pagos registrados
+        pagos_anio = Pago.query.filter(
+            Pago.casa_id == casa.id,
+            func.extract('year', Pago.fecha) == anio_actual
+        ).all()
+        meses_pagados = [p.fecha.month for p in pagos_anio]
+
+        for i in range(1, 13):
+            fila[meses_nombres[i-1]] = "PAGADO" if i in meses_pagados else "PENDIENTE"
+        
+        fila["Saldo Total"] = casa.saldo_total
+        matriz_datos.append(fila)
+
+    df = pd.DataFrame(matriz_datos)
+    output = io.BytesIO()
+    
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        # Escribimos los datos dejando espacio para el encabezado
+        df.to_excel(writer, index=False, sheet_name='Matriz de Pagos', startrow=5)
+        
+        workbook = writer.book
+        worksheet = writer.sheets['Matriz de Pagos']
+        workbook.active = worksheet
+
+        # Intentar insertar el Logo
+        logo_path = os.path.join(app.root_path, 'static/img','logoEsperanza.png')
+        if os.path.exists(logo_path):
+            try:
+                img = Image(logo_path)
+                img.width, img.height = (80, 80) # Tamaño cuadrado pequeño
+                worksheet.add_image(img, 'A1')
+            except Exception as e:
+                print(f"No se pudo cargar el logo en Excel: {e}")
+
+        # Aplicar Estilos al Encabezado (Aquí es donde daba error)
+        worksheet['C2'] = "CONJUNTO RESIDENCIAL LA ESPERANZA"
+        worksheet['C2'].font = Font(size=16, bold=True, color="1E293B")
+        
+        worksheet['C3'] = f"MATRIZ GLOBAL DE PAGOS - AÑO {anio_actual}"
+        worksheet['C3'].font = Font(size=12, bold=True)
+        
+        worksheet['C4'] = f"Reporte generado el: {datetime.now().strftime('%d/%m/%Y %H:%M')}"
+        worksheet['C4'].font = Font(size=10, italic=True)
+
+    output.seek(0)
+    return send_file(output, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                     as_attachment=True, download_name=f"Matriz_Pagos_{anio_actual}.xlsx")
+
+
+# --- REPORTE: RENDICIÓN DE CUENTAS EN PDF ---
+@app.route('/admin/rendicion-cuentas-pdf')
+@login_required
+def rendicion_cuentas_pdf():
+    if current_user.rol != 'admin':
+        return redirect(url_for('inicio'))
+
+    # Totales para el informe
+    ing_ali = db.session.query(func.sum(Pago.monto)).scalar() or 0
+    ing_ext = db.session.query(func.sum(IngresoExtra.monto)).scalar() or 0
+    gastos = db.session.query(func.sum(Gasto.monto)).scalar() or 0
+    
+    buffer = io.BytesIO()
+    p = canvas.Canvas(buffer, pagesize=A4)
+    
+    # Encabezado con Logo
+    logo_path = os.path.join(app.root_path, 'static\img','logoEsperanza.png')
+    if os.path.exists(logo_path):
+        try:
+            p.drawImage(logo_path, 20*mm, 260*mm, width=25*mm, preserveAspectRatio=True, mask='auto')
+        except:
+            pass
+
+    p.setFont("Helvetica-Bold", 16)
+    p.drawString(50*mm, 275*mm, "CONJUNTO RESIDENCIAL LA ESPERANZA")
+    p.setFont("Helvetica", 10)
+    p.drawString(50*mm, 270*mm, f"Informe Financiero de Gestión - Período {datetime.now().year}")
+    p.line(20*mm, 255*mm, 190*mm, 255*mm)
+
+    # Detalle de cuentas
+    p.setFont("Helvetica-Bold", 12)
+    p.drawString(25*mm, 240*mm, "RESUMEN DE CAJA:")
+    
+    p.setFont("Helvetica", 11)
+    y = 230
+    items = [
+        (f"(+) Recaudación por Alícuotas:", ing_ali),
+        (f"(+) Otros Ingresos / Extras:", ing_ext),
+        (f"(-) Gastos de Mantenimiento:", gastos),
+    ]
+    
+    for label, valor in items:
+        p.drawString(30*mm, y*mm, label)
+        p.drawRightString(180*mm, y*mm, f"${'{:,.2f}'.format(valor)}")
+        y -= 8
+
+    # Resultado Final
+    p.line(140*mm, (y+4)*mm, 185*mm, (y+4)*mm)
+    p.setFont("Helvetica-Bold", 12)
+    p.drawString(30*mm, (y-5)*mm, "SALDO NETO EN CAJA:")
+    p.drawRightString(180*mm, (y-5)*mm, f"${'{:,.2f}'.format(ing_ali + ing_ext - gastos)}")
+
+    p.showPage()
+    p.save()
+    buffer.seek(0)
+    return send_file(buffer, as_attachment=True, download_name="Rendicion_Cuentas.pdf", mimetype='application/pdf')
+
+
+
+
 with app.app_context():
     from sqlalchemy import text
     try:
@@ -1340,7 +1576,6 @@ if __name__ == '__main__':
     with app.app_context():
         # Crea las tablas con la estructura limpia
         db.create_all()
-        
         # Buscamos si ya existe el admin para no repetirlo
         admin_check = Usuario.query.filter_by(username='admin').first()
         
