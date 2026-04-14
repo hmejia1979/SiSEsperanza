@@ -4,7 +4,7 @@ import pandas as pd
 from datetime import datetime
 from io import BytesIO
 from dotenv import load_dotenv
-from flask import Flask, render_template, request, redirect, url_for, flash, send_file
+from flask import Flask, render_template, request, redirect, url_for, flash, send_file, make_response, current_app
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from flask_apscheduler import APScheduler
 from sqlalchemy import func, or_
@@ -19,6 +19,9 @@ from models import db, Usuario, Casa, Pago, Gasto, Configuracion, Deuda, Ingreso
 from openpyxl.drawing.image import Image
 import json
 from openpyxl.styles import Font, Alignment
+from xhtml2pdf import pisa
+import locale
+
 load_dotenv()
 
 UMBRAL_ALERTA_CAJA = 30.00  # Se activa si hay menos de $30
@@ -235,47 +238,52 @@ def confirmar_pago_meses(casa_id):
 
     return redirect(url_for('detalle_casa', id=casa_id))
 
+
 @app.route('/inicio')
 @login_required
 def inicio():
-    # --- 1. DATOS GLOBALES (Calculados para ambos roles) ---
-    # Sumamos los pagos de alícuotas (tabla Pago)
-    ingresos_alicuotas = db.session.query(db.func.sum(Pago.monto)).scalar() or 0.0
+    # --- 1. DATOS GLOBALES ---
+    # Suma de alícuotas
+    ingresos_alicuotas = db.session.query(func.sum(Pago.monto)).scalar() or 0.0
     
-    # Sumamos los ingresos extras (tabla IngresoExtra)
-    ingresos_extras = db.session.query(db.func.sum(IngresoExtra.monto)).scalar() or 0.0
+    # Suma de todos los ingresos extras
+    ingresos_extras = db.session.query(func.sum(IngresoExtra.monto)).scalar() or 0.0
     
-    # Ingresos totales = Alícuotas + Extras
+    # RECAUDACIÓN LOCAL: Comparación exacta con 'Alquiler Local'
+    # Usamos func.trim para eliminar espacios accidentales antes o después del texto
+    recaudacion_local = db.session.query(func.sum(IngresoExtra.monto)).filter(
+        func.trim(IngresoExtra.categoria) == 'Alquiler Local'
+    ).scalar() or 0.0
+    
+    # Cálculo de caja
     ingresos_totales = ingresos_alicuotas + ingresos_extras
-    
-    # Gastos totales
-    gastos_totales = db.session.query(db.func.sum(Gasto.monto)).scalar() or 0.0
-    
-    # Saldo real en caja
+    gastos_totales = db.session.query(func.sum(Gasto.monto)).scalar() or 0.0
     saldo_en_caja = ingresos_totales - gastos_totales
 
     # --- 2. VISTA PARA ADMINISTRADOR ---
     if current_user.rol == 'admin':
+        # Estadísticas generales
         total_casas = Casa.query.count()
         casas_mora_count = Casa.query.filter(Casa.saldo_total > 0).count()
         casas_al_dia_count = total_casas - casas_mora_count
-        
         datos_mora = [casas_al_dia_count, casas_mora_count]
 
+        # Gastos por categoría (Dashboard)
         gastos_por_categoria = db.session.query(
-            Gasto.categoria, db.func.sum(Gasto.monto)
+            Gasto.categoria, func.sum(Gasto.monto)
         ).group_by(Gasto.categoria).all()
 
         labels_gastos = [cat if cat else "Sin Categoría" for cat, monto in gastos_por_categoria]
         valores_gastos = [float(monto) for cat, monto in gastos_por_categoria]
 
-        # Para el admin, mostramos los últimos movimientos de alícuotas
+        # Actividad reciente
         ultimos_pagos_admin = Pago.query.order_by(Pago.id.desc()).limit(5).all()
         
         return render_template('admin/inicio_admin.html', 
                                saldo_caja=saldo_en_caja,
                                ingresos=ingresos_totales,
                                gastos=gastos_totales,
+                               recaudacion_local=recaudacion_local,
                                total_casas=total_casas,
                                casas_mora=casas_mora_count,
                                labels_mora=json.dumps(['Al Día', 'En Mora']),
@@ -286,29 +294,53 @@ def inicio():
 
     # --- 3. VISTA PARA DUEÑO (Propietario) ---
     else:
-        # Buscamos la casa vinculada al usuario actual
         casa_dueno = Casa.query.filter_by(usuario_id=current_user.id).first()
         mis_pagos = []
         saldo_p = 0.0
         
         if casa_dueno:
-            # Sus últimos 5 pagos personales
             mis_pagos = Pago.query.filter_by(casa_id=casa_dueno.id).order_by(Pago.fecha.desc()).limit(5).all()
             saldo_p = casa_dueno.saldo_total or 0.0
         
-        # --- LISTADO DE MOROSOS (Transparencia para el conjunto) ---
-        # Traemos todas las casas que deben, ordenadas de mayor a menor deuda
         lista_morosos = Casa.query.filter(Casa.saldo_total > 0).order_by(Casa.saldo_total.desc()).all()
-        
-        # Últimos 5 gastos de la comunidad para que vean en qué se usa el dinero
         ultimos_gastos = Gasto.query.order_by(Gasto.fecha.desc()).limit(5).all()
         
         return render_template('inicio_dueno.html', 
                                saldo_pendiente=saldo_p, 
                                saldo_caja=saldo_en_caja, 
+                               recaudacion_local=recaudacion_local,
                                pagos=mis_pagos, 
                                gastos_comunidad=ultimos_gastos,
                                lista_morosos=lista_morosos)
+
+
+@app.route('/descargar_recibo_extra/<int:id>')
+@login_required
+def descargar_recibo_extra(id):
+    if current_user.rol != 'admin':
+        return redirect(url_for('inicio'))
+
+    ingreso = IngresoExtra.query.get_or_404(id)
+    
+    # Ruta al logo
+    logo_path = os.path.join(current_app.root_path, 'static', 'img', 'logoEsperanza.png')
+    
+    # Si el archivo no existe físicamente, pasamos None para evitar errores
+    if not os.path.exists(logo_path):
+        logo_path = None
+    
+    html = render_template('admin/recibo_pdf.html', ingreso=ingreso, logo=logo_path)
+    
+    output = io.BytesIO()
+    # Generamos el PDF
+    pisa.CreatePDF(html.encode("UTF-8"), dest=output, encoding='UTF-8')
+    
+    output.seek(0)
+    return make_response(output.read(), 200, {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': f'inline; filename=Recibo_{ingreso.id}.pdf'
+    })
+
 
 @app.route('/admin/configuracion', methods=['GET', 'POST'])
 @login_required
@@ -1296,6 +1328,29 @@ def mi_cuenta():
 
     return render_template('estado_cuenta.html', casa=casa, pagos=casa.pagos)
 
+@app.route('/admin/dashboard')
+@login_required
+def dashboard():
+    if current_user.rol != 'admin':
+        return redirect(url_for('inicio'))
+
+    # 1. Datos para gráfico de Ingresos vs Gastos
+    total_ingresos = db.session.query(func.sum(Pago.monto)).scalar() or 0
+    total_gastos = db.session.query(func.sum(Gasto.monto)).scalar() or 0
+    
+    # 2. Datos de Mora vs Recaudación
+    total_mora = db.session.query(func.sum(Casa.saldo_total)).filter(Casa.saldo_total > 0).scalar() or 0
+    
+    # 3. Datos para gráfico de barras (Últimos 6 meses)
+    # Esto requiere una consulta un poco más compleja para agrupar por mes
+    # Por ahora, enviamos los totales principales
+    
+    return render_template('admin/dashboard.html', 
+                           ingresos=total_ingresos, 
+                           gastos=total_gastos, 
+                           mora=total_mora,
+                           saldo=total_ingresos - total_gastos)
+
 
 @app.route('/admin/reporte')
 @login_required
@@ -1559,19 +1614,6 @@ def rendicion_cuentas_pdf():
 
 
 
-
-with app.app_context():
-    from sqlalchemy import text
-    try:
-        # 1. Intentamos renombrar la columna físicamente en Postgres
-        db.session.execute(text('ALTER TABLE casas RENAME COLUMN saldo_total TO saldo_total;'))
-        db.session.commit()
-        print("✅ ÉXITO: La columna física en PostgreSQL ahora es 'saldo_total'.")
-    except Exception as e:
-        db.session.rollback()
-        # Si da error aquí, es porque probablemente ya se renombró o el nombre es distinto
-        print(f"⚠️ NOTA: No se pudo renombrar (Quizás ya estaba lista): {e}")
-# -------------------------------------------
 if __name__ == '__main__':
     with app.app_context():
         # Crea las tablas con la estructura limpia

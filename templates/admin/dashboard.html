@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-4">
+    <h2 style="color: #1e293b; font-weight: 700; margin-bottom: 25px;">📊 Panel de Control Financiero</h2>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 30px;">
+        
+        <div style="background: white; padding: 25px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+            <h5 style="color: #64748b; margin-bottom: 20px; font-weight: 600;">Balance: Ingresos vs Gastos</h5>
+            <canvas id="chartBalance" style="max-height: 300px;"></canvas>
+        </div>
+
+        <div style="background: white; padding: 25px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+            <h5 style="color: #64748b; margin-bottom: 20px; font-weight: 600;">Estado de Cartera (Cobrabilidad)</h5>
+            <canvas id="chartCartera" style="max-height: 300px;"></canvas>
+        </div>
+
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+    // Gráfico 1: Balance
+    const ctx1 = document.getElementById('chartBalance').getContext('2d');
+    new Chart(ctx1, {
+        type: 'doughnut',
+        data: {
+            labels: ['Ingresos', 'Gastos'],
+            datasets: [{
+                data: [{{ ingresos }}, {{ gastos }}],
+                backgroundColor: ['#10b981', '#ef4444'],
+                hoverOffset: 4
+            }]
+        },
+        options: { responsive: true }
+    });
+
+    // Gráfico 2: Cartera
+    const ctx2 = document.getElementById('chartCartera').getContext('2d');
+    new Chart(ctx2, {
+        type: 'bar',
+        data: {
+            labels: ['Recaudado', 'Por Cobrar (Mora)'],
+            datasets: [{
+                label: 'Dólares ($)',
+                data: [{{ ingresos }}, {{ mora }}],
+                backgroundColor: ['#3b82f6', '#f59e0b'],
+                borderRadius: 8
+            }]
+        },
+        options: {
+            scales: { y: { beginAtZero: true } }
+        }
+    });
+</script>
+{% endblock %}
