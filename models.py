@@ -95,3 +95,5 @@ class IngresoExtra(db.Model):
     fecha = db.Column(db.DateTime, default=datetime.utcnow)
     concepto = db.Column(db.String(200), nullable=False)
     categoria = db.Column(db.String(50))  # Ej: Alquiler, Multa, Donación
+
+
