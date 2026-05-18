@@ -1,0 +1,13 @@
+venv/
+ENV/
+.env
+.git/
+.github/
+.agentes/
+__pycache__/
+*.py[cod]
+instance/
+*.db
+.vscode/
+*.md
+!README.md

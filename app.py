@@ -30,12 +30,14 @@ app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')
 
 # --- CONFIGURACIÓN DE CORREO ELECTRÓNICO ---
-app.config['MAIL_SERVER'] = 'smtp.gmail.com'
-app.config['MAIL_PORT'] = 587
-app.config['MAIL_USE_TLS'] = True
-app.config['MAIL_USERNAME'] = 'hernymejia@gmail.com' # Reemplaza con tu correo
-app.config['MAIL_PASSWORD'] = 'wovytcycsqboesgl' # Reemplaza con tu contraseña de aplicación
-app.config['MAIL_DEFAULT_SENDER'] = ('Aviso Conjunto Esperanza', 'hernymejia@gmail.com')
+app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER', 'smtp.gmail.com')
+app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT', '587'))
+app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS', 'true').lower() in ('1', 'true', 'yes')
+app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
+app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
+_mail_sender_name = os.getenv('MAIL_DEFAULT_SENDER_NAME', 'Aviso Conjunto Esperanza')
+_mail_sender_email = os.getenv('MAIL_DEFAULT_SENDER_EMAIL', os.getenv('MAIL_USERNAME', ''))
+app.config['MAIL_DEFAULT_SENDER'] = (_mail_sender_name, _mail_sender_email)
 
 mail = Mail(app)
 

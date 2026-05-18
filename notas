@@ -1,0 +1,50 @@
+      - name: Copiar stack.yml al VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          password: ${{ secrets.VPS_PASSWORD }}
+          port: ${{ secrets.VPS_SSH_PORT || 22 }}
+          source: stack.yml,Makefile
+          target: ${{ env.DEPLOY_PATH }}
+
+      - name: Desplegar en Docker Swarm
+        id: deploy
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          GHCR_TOKEN: ${{ secrets.GHCR_PATH }}
+          GHCR_USER: ${{ github.actor }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          password: ${{ secrets.VPS_PASSWORD }}
+          port: ${{ secrets.VPS_SSH_PORT || 22 }}
+          envs: GHCR_TOKEN,GHCR_USER
+          script_stop: true
+          script: |
+            set -e
+            cd ${{ env.DEPLOY_PATH }}
+            if [ ! -f .env ]; then
+              echo "ERROR: Crear ${{ env.DEPLOY_PATH }}/.env en el VPS (ver .env.example)"
+              exit 1
+            fi
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+            set -a && source .env && set +a
+            export IMAGE_TAG=latest
+            docker pull ${{ env.IMAGE_NAME }}:latest
+            docker stack deploy --with-registry-auth -c stack.yml ${{ env.STACK_NAME }}
+            echo "Esperando servicios..."
+            sleep 20
+            docker stack services ${{ env.STACK_NAME }}
+
+      - name: Rollback si falla el despliegue
+        if: failure() && steps.deploy.outcome == 'failure'
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          password: ${{ secrets.VPS_PASSWORD }}
+          port: ${{ secrets.VPS_SSH_PORT || 22 }}
+          script: |
+            docker service rollback ${{ env.STACK_NAME }}_app || true
+            echo "Rollback ejecutado en el servicio app"
