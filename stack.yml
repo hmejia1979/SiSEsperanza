@@ -1,0 +1,122 @@
+version: "3.8"
+
+services:
+
+  postgres:
+    image: postgres:16-alpine
+
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-sise_db}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD requerida}
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    networks:
+      - sise-internal
+
+    deploy:
+      replicas: 1
+
+      placement:
+        constraints:
+          - node.role == manager
+
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+
+  app:
+    image: ghcr.io/byronmoreno/siseesperanza:${IMAGE_TAG:-latest}
+
+    environment:
+
+      # Flask
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY requerida}
+      FLASK_ENV: production
+      TZ: America/Guayaquil
+
+      # PostgreSQL
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-sise_db}
+
+      # Mail
+      MAIL_SERVER: ${MAIL_SERVER:-smtp.gmail.com}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USE_TLS: ${MAIL_USE_TLS:-true}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_DEFAULT_SENDER_NAME: ${MAIL_DEFAULT_SENDER_NAME:-Aviso Conjunto Esperanza}
+      MAIL_DEFAULT_SENDER_EMAIL: ${MAIL_DEFAULT_SENDER_EMAIL:-}
+
+    networks:
+      - sise-internal
+      - traefik-public
+
+    deploy:
+
+      replicas: ${REPLICAS:-1}
+
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+
+      update_config:
+        parallelism: 1
+        delay: 15s
+        order: start-first
+        failure_action: rollback
+
+      rollback_config:
+        parallelism: 1
+        delay: 10s
+
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=traefik-public
+
+        # Router HTTPS
+        - traefik.http.routers.siseesperanza.rule=Host(`siseesperanza.byronrm.com`)
+        - traefik.http.routers.siseesperanza.entrypoints=https
+        - traefik.http.routers.siseesperanza.tls=true
+        - traefik.http.routers.siseesperanza.tls.certresolver=letsencrypt
+
+        # Puerto interno Flask/Gunicorn
+        - traefik.http.services.siseesperanza.loadbalancer.server.port=5000
+
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/login', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+
+
+networks:
+
+  traefik-public:
+    external: true
+
+  sise-internal:
+    driver: overlay
+    attachable: true
+
+
+volumes:
+
+  postgres_data:
